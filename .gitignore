@@ -29,3 +29,15 @@ Thumbs.db
 
 # Project-specific
 sounds/*.wav
+
+# Ignore all common music/audio file types
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.aac
+*.m4a
+*.wma
+*.aiff
+*.aif
+*.alac

@@ -2,7 +2,6 @@
 import os
 import numpy as np
 import soundfile as sf
-import sounddevice as sd
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, QLabel, QSlider
 )
@@ -16,19 +15,19 @@ class Music(ModuleWindow):
     def __init__(self, mixer_callback, close_callback):
         # Mixer parameters
         self.volume = -60.0  # dB
-        self.pan = 0.0
-        self.fs = 44100
+        self.pan = 0.0       # -1 left → +1 right
 
         # Playback state
-        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
         self.playing = False
         self.current_index = None
-        self.pitch = 1.0      # 1.0 = normal speed/pitch
-        self.scratch_offset = 0
+        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
+        self.playhead = 0.0       # float index into current track
+        self.pitch = 1.0          # speed factor (1.0 = normal)
+        self.songs = []
 
         super().__init__("Music", mixer_callback, close_callback)
 
-        # UI
+        # --- UI ---
         self.content_layout.addWidget(QLabel("Music Player"))
 
         self.list_widget = QListWidget()
@@ -53,22 +52,30 @@ class Music(ModuleWindow):
         self.content_layout.addWidget(self.pitch_slider)
 
         # Load playlist
-        self.songs = []
         self.load_playlist()
 
     def load_playlist(self):
         playlist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlist"))
         if not os.path.exists(playlist_dir):
             os.makedirs(playlist_dir)
+
         for fname in os.listdir(playlist_dir):
             if fname.lower().endswith(AUDIO_EXTENSIONS):
                 path = os.path.join(playlist_dir, fname)
                 self.list_widget.addItem(fname)
                 try:
                     data, fs = sf.read(path, dtype="float32")
-                    self.songs.append((data, fs))
+                    if data.ndim == 1:
+                        data = np.column_stack((data, data))  # stereo
+                    # resample to module sample rate if needed
+                    if fs != 44100:
+                        ratio = 44100 / fs
+                        idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
+                        idx = idx[idx < len(data)]
+                        data = data[idx]
+                    self.songs.append(data)
                 except Exception as e:
-                    print(f"Failed to load {fname}: {e}")
+                    print(f"[Music] Failed to load {fname}: {e}")
 
     def toggle_play(self):
         if self.playing:
@@ -79,35 +86,40 @@ class Music(ModuleWindow):
             self.play_btn.setText("Pause")
             self.current_index = self.list_widget.currentRow()
             if self.current_index >= 0:
-                self.queue_song(self.current_index)
+                self.playhead = 0.0
+                self.play_buffer = self.songs[self.current_index]
 
     def stop_playback(self):
         self.playing = False
-        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
         self.play_btn.setText("Play")
+        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
+        self.playhead = 0.0
 
     def update_pitch(self, value):
-        self.pitch = value / 100.0  # 50–200 → 0.5x–2x
-
-    def queue_song(self, index):
-        data, fs = self.songs[index]
-        # TODO: apply pitch shifting here
-        if data.ndim == 1:
-            data = np.column_stack((data, data))
-        self.play_buffer = np.vstack((self.play_buffer, data))
+        self.pitch = value / 100.0  # slider 50–200 → 0.5x–2x
 
     def get_samples(self, frames: int):
-        if not self.playing or len(self.play_buffer) == 0:
+        if not self.playing or self.current_index is None:
             return np.zeros((frames, 2), dtype=np.float32)
 
-        out = self.play_buffer[:frames]
-        self.play_buffer = self.play_buffer[frames:]
+        track = self.songs[self.current_index]
+        out = np.zeros((frames, 2), dtype=np.float32)
 
-        if len(out) < frames:
-            pad = np.zeros((frames - len(out), 2), dtype=np.float32)
-            out = np.vstack((out, pad))
+        for i in range(frames):
+            idx = int(self.playhead)
+            if idx >= len(track) - 1:
+                self.playing = False
+                self.play_btn.setText("Play")
+                break
 
-        # Apply mixer volume and pan
+            # linear interpolation for fractional index
+            next_idx = idx + 1
+            frac = self.playhead - idx
+            sample = (1 - frac) * track[idx] + frac * track[next_idx]
+            out[i] = sample
+            self.playhead += self.pitch
+
+        # Apply module volume and pan
         gain = 10 ** (self.volume / 20.0)
         left_gain = gain * (1 - max(0, self.pan))
         right_gain = gain * (1 - max(0, -self.pan))

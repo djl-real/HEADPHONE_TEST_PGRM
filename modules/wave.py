@@ -32,7 +32,7 @@ class WaveGenerator(ModuleWindow):
 
         # Sample rate knob
         self.fs_knob = QDial()
-        self.fs_knob.setMinimum(22050)  # 22 kHz
+        self.fs_knob.setMinimum(100)  # 22 kHz
         self.fs_knob.setMaximum(96000)  # 96 kHz
         self.fs_knob.setValue(self.fs)
         self.fs_knob.setNotchesVisible(True)
