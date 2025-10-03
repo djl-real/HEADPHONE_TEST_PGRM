@@ -1,75 +1,114 @@
 # modules/static.py
 import numpy as np
-from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget, QPushButton, QDial
+from PyQt6.QtWidgets import QLabel, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QSlider
+from PyQt6.QtCore import Qt
 from module_base import ModuleWindow
 
 
 class StaticGenerator(ModuleWindow):
-    """Static noise generator module compatible with central mixer."""
+    """Static noise generator module compatible with central mixer.
+    Two sliders control high-pass and low-pass filtering of the white noise.
+    """
 
     def __init__(self, mixer_callback, close_callback):
         # --- Initialize audio state FIRST ---
         self.fs = 44100
-        self.phase = 0.0
-        self.freq = 440
         self.channels = 2
         self.volume = -60.0       # dB, default muted
-        self.pan = 0.0          # -1 left → +1 right
+        self.pan = 0.0            # -1 left → +1 right
         self.muted = False
         self.running = True
 
-        # Call base class after attributes exist
+        # Filter states for stateful IIR
+        self.prev_input_hp = np.zeros(self.channels)
+        self.prev_output_hp = np.zeros(self.channels)
+        self.prev_output_lp = np.zeros(self.channels)
+
+        # Filter parameters (normalized 0–1)
+        self.hp_alpha = 0.0
+        self.lp_alpha = 1.0
+
         super().__init__("Static", mixer_callback, close_callback)
 
         # --- UI Setup ---
         label = QLabel(f"Static Generator: {self.name}")
+        self.content_layout.addWidget(label)
 
         # On/Off toggle
         self.toggle_button = QPushButton("ON")
         self.toggle_button.setCheckable(True)
         self.toggle_button.setChecked(True)
         self.toggle_button.toggled.connect(self.toggle_running)
-
-        # Sample rate knob
-        self.fs_knob = QDial()
-        self.fs_knob.setMinimum(22050)  # 22 kHz
-        self.fs_knob.setMaximum(96000)  # 96 kHz
-        self.fs_knob.setValue(self.fs)
-        self.fs_knob.setNotchesVisible(True)
-        self.fs_knob.valueChanged.connect(self.update_fs)
-        fs_label = QLabel("Sample Rate (Hz)")
-
-        # Layout: add all widgets to content_layout from ModuleWindow
-        self.content_layout.addWidget(label)
         self.content_layout.addWidget(self.toggle_button)
-        self.content_layout.addWidget(fs_label)
-        self.content_layout.addWidget(self.fs_knob)
+
+        # High-pass slider
+        hp_layout = QHBoxLayout()
+        hp_label = QLabel("High-pass")
+        self.hp_slider = QSlider(Qt.Orientation.Horizontal)
+        self.hp_slider.setMinimum(0)
+        self.hp_slider.setMaximum(100)
+        self.hp_slider.setValue(0)
+        self.hp_slider.valueChanged.connect(self.update_hp)
+        hp_layout.addWidget(hp_label)
+        hp_layout.addWidget(self.hp_slider)
+        self.content_layout.addLayout(hp_layout)
+
+        # Low-pass slider
+        lp_layout = QHBoxLayout()
+        lp_label = QLabel("Low-pass")
+        self.lp_slider = QSlider(Qt.Orientation.Horizontal)
+        self.lp_slider.setMinimum(0)
+        self.lp_slider.setMaximum(100)
+        self.lp_slider.setValue(100)
+        self.lp_slider.valueChanged.connect(self.update_lp)
+        lp_layout.addWidget(lp_label)
+        lp_layout.addWidget(self.lp_slider)
+        self.content_layout.addLayout(lp_layout)
 
     # --- UI callbacks ---
     def toggle_running(self, on):
-        """Enable or disable audio generation."""
         self.running = on
         self.toggle_button.setText("ON" if on else "OFF")
 
-    def update_fs(self, value):
-        """Update sample rate from knob"""
-        self.fs = value
+    def update_hp(self, value):
+        """Update high-pass filter alpha (0 = off, 1 = max)."""
+        # Map slider 0–100 → 0.0–0.99
+        self.hp_alpha = value / 100 * 0.99
 
-    # --- Audio interface for central mixer ---
+    def update_lp(self, value):
+        """Update low-pass filter alpha (0 = min, 1 = off)."""
+        # Map slider 0–100 → 0.01–1.0
+        self.lp_alpha = 0.01 + value / 100 * 0.99
+
+    # --- Audio interface ---
     def get_samples(self, frames: int):
-        """Return stereo samples for mixer"""
         if not self.running or self.muted:
             return np.zeros((frames, self.channels), dtype=np.float32)
 
-        t = np.arange(frames) / self.fs
-        samples = np.sin(2 * np.pi * self.freq * t + self.phase)
-        self.phase += 2 * np.pi * self.freq * frames / self.fs
-        self.phase = self.phase % (2 * np.pi)
+        samples = np.random.uniform(-1, 1, size=(frames, self.channels))
 
-        samples = np.tile(samples[:, None], (1, 2))  # stereo
-        samples *= 10 ** (self.volume / 20)          # apply dB volume
+        # Apply high-pass filter
+        for ch in range(self.channels):
+            for n in range(frames):
+                x = samples[n, ch]
+                y = self.hp_alpha * (self.prev_output_hp[ch] + x - self.prev_input_hp[ch])
+                self.prev_input_hp[ch] = x
+                self.prev_output_hp[ch] = y
+                samples[n, ch] = y
 
-        # apply pan
+        # Apply low-pass filter
+        for ch in range(self.channels):
+            for n in range(frames):
+                x = samples[n, ch]
+                y = self.lp_alpha * x + (1 - self.lp_alpha) * self.prev_output_lp[ch]
+                self.prev_output_lp[ch] = y
+                samples[n, ch] = y
+
+        # Apply volume
+        gain = 10 ** (self.volume / 20)
+        samples *= gain
+
+        # Apply pan
         left_gain = np.sqrt(0.5 * (1 - self.pan))
         right_gain = np.sqrt(0.5 * (1 + self.pan))
         samples[:, 0] *= left_gain
@@ -78,5 +117,4 @@ class StaticGenerator(ModuleWindow):
         return samples
 
     def closeEvent(self, event):
-        """Notify mixer and cleanup."""
         super().closeEvent(event)
