@@ -9,6 +9,8 @@ class StaticGenerator(ModuleWindow):
     def __init__(self, mixer_callback, close_callback):
         # --- Initialize audio state FIRST ---
         self.fs = 44100
+        self.phase = 0.0
+        self.freq = 440
         self.channels = 2
         self.volume = 0.2       # default volume (0–1)
         self.pan = 0.0          # -1 left → +1 right
@@ -53,27 +55,25 @@ class StaticGenerator(ModuleWindow):
         self.toggle_button.setText("ON" if on else "OFF")
 
     def update_fs(self, value):
-        """Adjust sample rate (experimental; affects generated samples)."""
-        self.fs = value
+        self.freq = value
 
     # --- Audio interface for central mixer ---
     def get_samples(self, frames):
-        """Return a stereo audio buffer of shape (frames, 2)."""
         if not self.running or self.muted:
             return np.zeros((frames, self.channels), dtype=np.float32)
 
-        # Generate white noise
-        samples = np.random.uniform(-1, 1, (frames, 2)).astype(np.float32)
-
-        # Apply volume
+        t = np.arange(frames) / self.fs
+        samples = np.sin(2 * np.pi * self.freq * t + self.phase)
+        self.phase += 2 * np.pi * self.freq * frames / self.fs
+        self.phase = self.phase % (2 * np.pi)
+        samples = np.tile(samples[:, None], (1, 2))  # stereo
         samples *= self.volume
 
-        # Apply pan
+        # apply pan
         left_gain = np.sqrt(0.5 * (1 - self.pan))
         right_gain = np.sqrt(0.5 * (1 + self.pan))
         samples[:, 0] *= left_gain
         samples[:, 1] *= right_gain
-
         return samples
 
     def closeEvent(self, event):
