@@ -6,6 +6,7 @@ from mixer import MixerPanel
 from modules.static import StaticGenerator
 from modules.soundboard import Soundboard
 from modules.wave import WaveGenerator
+from modules.music import Music
 
 
 class MainWindow(QWidget):
@@ -21,6 +22,7 @@ class MainWindow(QWidget):
             ("Static", StaticGenerator),
             ("Soundboard", Soundboard),
             ("Wave", WaveGenerator),
+            ("Music", Music),
         ]
 
         grid = QGridLayout()

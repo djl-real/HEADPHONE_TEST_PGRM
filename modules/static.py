@@ -105,7 +105,7 @@ class StaticGenerator(ModuleWindow):
                 samples[n, ch] = y
 
         # Apply volume
-        gain = 10 ** (self.volume / 20)
+        gain = 10 ** (self.volume / 10) # adjusted for relative volume
         samples *= gain
 
         # Apply pan
