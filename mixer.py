@@ -7,20 +7,13 @@ import sounddevice as sd
 DB_MIN = -60   # approximate -inf dB
 DB_MAX = 10    # +10 dB
 
-def slider_to_gain(slider_value):
-    """Convert slider value (0-100) to linear gain."""
-    if slider_value <= 0:
-        return 0.0  # -inf dB
-    # Map 1–100 → -60 dB to +10 dB
-    db = -60 + (slider_value / 100) * 70  # -60 → +10
-    return 10 ** (db / 20)
+def slider_to_db(slider_value):
+    """Map slider 0-100 → -60 dB to +10 dB."""
+    return DB_MIN + (slider_value / 100) * (DB_MAX - DB_MIN)
 
-def gain_to_slider(gain):
-    """Convert linear gain back to slider value."""
-    if gain <= 0:
-        return 0
-    db = 20 * np.log10(gain)
-    return int((db + 60) / 70 * 100)
+def db_to_slider(db_value):
+    """Map -60 dB → +10 dB back to slider 0-100"""
+    return int((db_value - DB_MIN) / (DB_MAX - DB_MIN) * 100)
 
 class MixerFader(QWidget):
     """Single fader controlling module volume, mute, and pan."""
@@ -42,7 +35,7 @@ class MixerFader(QWidget):
         self.slider = QSlider(Qt.Orientation.Vertical)
         self.slider.setMinimum(0)
         self.slider.setMaximum(100)
-        self.slider.setValue(gain_to_slider(module.volume))  # convert linear volume to slider
+        self.slider.setValue(db_to_slider(module.volume))  # convert linear volume to slider
         self.slider.valueChanged.connect(self.update_volume)
 
         self.slider.setFixedHeight(200)  # adjust height as needed
@@ -82,7 +75,7 @@ class MixerFader(QWidget):
         self.setLayout(layout)
 
     def update_volume(self, value):
-        self.module.volume = slider_to_gain(value)
+        self.module.volume = slider_to_db(value)
 
     def update_mute(self, muted):
         self.module.muted = muted

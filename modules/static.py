@@ -3,6 +3,7 @@ import numpy as np
 from PyQt6.QtWidgets import QLabel, QVBoxLayout, QWidget, QPushButton, QDial
 from module_base import ModuleWindow
 
+
 class StaticGenerator(ModuleWindow):
     """Static noise generator module compatible with central mixer."""
 
@@ -12,9 +13,9 @@ class StaticGenerator(ModuleWindow):
         self.phase = 0.0
         self.freq = 440
         self.channels = 2
-        self.volume = 0.2       # default volume (0–1)
+        self.volume = -60.0       # dB, default muted
         self.pan = 0.0          # -1 left → +1 right
-        self.muted = True       # START MUTED
+        self.muted = False
         self.running = True
 
         # Call base class after attributes exist
@@ -38,15 +39,11 @@ class StaticGenerator(ModuleWindow):
         self.fs_knob.valueChanged.connect(self.update_fs)
         fs_label = QLabel("Sample Rate (Hz)")
 
-        # Layout
-        layout = QVBoxLayout()
-        layout.addWidget(label)
-        layout.addWidget(self.toggle_button)
-        layout.addWidget(fs_label)
-        layout.addWidget(self.fs_knob)
-        container = QWidget()
-        container.setLayout(layout)
-        self.setCentralWidget(container)
+        # Layout: add all widgets to content_layout from ModuleWindow
+        self.content_layout.addWidget(label)
+        self.content_layout.addWidget(self.toggle_button)
+        self.content_layout.addWidget(fs_label)
+        self.content_layout.addWidget(self.fs_knob)
 
     # --- UI callbacks ---
     def toggle_running(self, on):
@@ -55,10 +52,12 @@ class StaticGenerator(ModuleWindow):
         self.toggle_button.setText("ON" if on else "OFF")
 
     def update_fs(self, value):
-        self.freq = value
+        """Update sample rate from knob"""
+        self.fs = value
 
     # --- Audio interface for central mixer ---
-    def get_samples(self, frames):
+    def get_samples(self, frames: int):
+        """Return stereo samples for mixer"""
         if not self.running or self.muted:
             return np.zeros((frames, self.channels), dtype=np.float32)
 
@@ -66,14 +65,16 @@ class StaticGenerator(ModuleWindow):
         samples = np.sin(2 * np.pi * self.freq * t + self.phase)
         self.phase += 2 * np.pi * self.freq * frames / self.fs
         self.phase = self.phase % (2 * np.pi)
+
         samples = np.tile(samples[:, None], (1, 2))  # stereo
-        samples *= self.volume
+        samples *= 10 ** (self.volume / 20)          # apply dB volume
 
         # apply pan
         left_gain = np.sqrt(0.5 * (1 - self.pan))
         right_gain = np.sqrt(0.5 * (1 + self.pan))
         samples[:, 0] *= left_gain
         samples[:, 1] *= right_gain
+
         return samples
 
     def closeEvent(self, event):
