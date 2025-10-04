@@ -7,6 +7,7 @@ from modules.static import StaticGenerator
 from modules.soundboard import Soundboard
 from modules.wave import WaveGenerator
 from modules.music import Music
+from modules.microphone import Microphone
 
 
 class MainWindow(QWidget):
@@ -23,6 +24,7 @@ class MainWindow(QWidget):
             ("Soundboard", Soundboard),
             ("Wave", WaveGenerator),
             ("Music", Music),
+            ("Mic", Microphone),
         ]
 
         grid = QGridLayout()
