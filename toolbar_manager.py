@@ -1,6 +1,7 @@
 # toolbar_manager.py
 from PyQt6.QtWidgets import QToolBar, QMenu, QToolButton
 from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QPointF
 from modules.bandpass import Bandpass
 from modules.endpoint import EndpointModule
 from modules.LFO import LFO
@@ -51,7 +52,7 @@ class ToolbarManager:
             self.toolbar.addWidget(button)
 
     def spawn_module(self, name: str):
-        """Creates the backend module and adds its graphical ModuleItem to the scene."""
+        """Creates the backend module and adds its graphical ModuleItem to the scene, centered in the current view."""
         # Find class by name
         cls = None
         for folder_modules in self.module_folders.values():
@@ -76,5 +77,12 @@ class ToolbarManager:
 
         # Create visual representation
         item = ModuleItem(module)
-        item.setPos(100, 100)
+
+        # Center spawn position based on current camera view
+        view = self.main_window.view
+        view_center = view.mapToScene(view.viewport().rect().center())
+
+        # Optional offset so modules don’t overlap perfectly
+        item.setPos(QPointF(view_center.x() - 50, view_center.y() - 25))
+
         self.main_window.scene.addItem(item)
