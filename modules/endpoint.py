@@ -1,7 +1,7 @@
 # modules/endpoint.py
 import numpy as np
-from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout, QPushButton
+from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
 DB_MIN = -80.0   # represent -inf dB
@@ -10,47 +10,48 @@ DB_MAX = 10.0
 def db_to_linear(db_value: float) -> float:
     return 10.0 ** (db_value / 20.0)
 
+
 class EndpointModule(AudioModule):
-    """Final output module with vertical DJ-style volume fader"""
+    """Final output module with vertical DJ-style volume fader and mute button"""
     def __init__(self, volume_db=-80.0):
         super().__init__(input_count=1, output_count=0)
-        self.volume_db = volume_db  # default silent
-        self.muted = False  # optional mute flag if needed
+        self.volume_db = volume_db
+        self.muted = False
 
     def generate(self, frames: int) -> np.ndarray:
-        if self.input_node is None or self.muted:
-            return np.zeros((frames, 2), dtype=np.float32)
-        data = self.input_node.receive(frames)
+        # Always receive from input, even when muted
+        if self.input_node is None:
+            data = np.zeros((frames, 2), dtype=np.float32)
+        else:
+            data = self.input_node.receive(frames)
+        
+        if self.muted:
+            return np.zeros_like(data, dtype=np.float32)
+
         gain = db_to_linear(self.volume_db)
         return data * gain
 
     def get_ui(self) -> QWidget:
-        """
-        Returns a QWidget containing a vertical slider with labels every 10 dB,
-        representing volume from -inf (~-80 dB) to +10 dB.
-        """
         widget = QWidget()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
+        layout = QVBoxLayout(widget)
 
         # Volume label
-        label = QLabel(f"Volume: {self.volume_db:.1f} dB")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
+        self.label = QLabel(f"Volume: {self.volume_db:.1f} dB")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.label)
 
         # Horizontal layout for slider and tick labels
         slider_layout = QHBoxLayout()
 
         # Slider
-        slider = QSlider(Qt.Orientation.Vertical)
-        slider.setMinimum(0)
-        slider.setMaximum(100)
-        # Initialize slider to match volume_db
-        slider.setValue(int((self.volume_db - DB_MIN) / (DB_MAX - DB_MIN) * 100))
-        slider.setTickInterval(10)
-        slider.setTickPosition(QSlider.TickPosition.TicksLeft)
-        slider.setFixedHeight(200)
-        slider_layout.addWidget(slider)
+        self.slider = QSlider(Qt.Orientation.Vertical)
+        self.slider.setMinimum(0)
+        self.slider.setMaximum(100)
+        self.slider.setValue(int((self.volume_db - DB_MIN) / (DB_MAX - DB_MIN) * 100))
+        self.slider.setTickInterval(10)
+        self.slider.setTickPosition(QSlider.TickPosition.TicksLeft)
+        self.slider.setFixedHeight(200)
+        slider_layout.addWidget(self.slider)
 
         # Labels on the left
         label_layout = QVBoxLayout()
@@ -63,15 +64,27 @@ class EndpointModule(AudioModule):
 
         layout.addLayout(slider_layout)
 
+        # Mute button
+        self.mute_button = QPushButton("Mute")
+        self.mute_button.setCheckable(True)
+        self.mute_button.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked {
+                background-color: #95a5a6;
+            }
+        """)
+        layout.addWidget(self.mute_button)
+        self.mute_button.toggled.connect(lambda state: setattr(self, "muted", state))
+
         # Slider change updates volume_db
         def on_value_change(value: int):
             self.volume_db = DB_MIN + (value / 100) * (DB_MAX - DB_MIN)
-            label.setText(f"Volume: {self.volume_db:.1f} dB")
+            self.label.setText(f"Volume: {self.volume_db:.1f} dB")
 
-        slider.valueChanged.connect(on_value_change)
+        self.slider.valueChanged.connect(on_value_change)
 
         return widget
-    
-    # def sizeHint(self):
-    #     """Return custom width/height for the fader."""
-    #     return QSize(200, 250)  # width x height
