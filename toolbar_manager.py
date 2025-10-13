@@ -1,62 +1,75 @@
 # toolbar_manager.py
-from PyQt6.QtWidgets import QToolBar
+from PyQt6.QtWidgets import QToolBar, QMenu, QToolButton
 from PyQt6.QtGui import QAction
 from modules.bandpass import Bandpass
 from modules.endpoint import EndpointModule
 from modules.LFO import LFO
 from modules.vco import VCO
+from modules.static import Noise
 from audio_module import AudioModule
 from ui_elements import ModuleItem
 
 
 class ToolbarManager:
     """
-    Handles the creation of the toolbar and management of available module types.
-    MainWindow delegates all toolbar and module-spawning logic here.
+    Handles the creation of the toolbar with folder grouping and module-spawning logic.
     """
 
     def __init__(self, main_window):
-        """
-        :param main_window: Reference to the main window (for scene access, module tracking, etc.)
-        """
         self.main_window = main_window
         self.toolbar = QToolBar("Modules")
         self.main_window.addToolBar(self.toolbar)
 
-        # Map module names to constructors
-        self.module_classes = {
-            "LFO": LFO,
-            "VCO": VCO,
-            "Bandpass": Bandpass,
-            "Endpoint": EndpointModule,
+        # Organize modules by folder
+        self.module_folders = {
+            "Source": [("LFO", LFO), ("VCO", VCO), ("Static", Noise)],
+            "Effects": [("Bandpass", Bandpass)],
+            "Master": [("Endpoint", EndpointModule)],
         }
 
-        # Register buttons for each available module
-        for name in self.module_classes.keys():
-            self.add_module_action(name)
+        self.create_folder_buttons()
 
-    def add_module_action(self, name: str):
-        """Adds a button to the toolbar that spawns the corresponding module."""
-        action = QAction(name, self.main_window)
-        self.toolbar.addAction(action)
-        action.triggered.connect(lambda: self.spawn_module(name))
+    def create_folder_buttons(self):
+        """Creates a toolbar button for each folder with a dropdown menu of modules."""
+        for folder_name, modules in self.module_folders.items():
+            menu = QMenu()
+            for name, cls in modules:
+                action = QAction(name, self.main_window)
+                action.triggered.connect(lambda checked, n=name: self.spawn_module(n))
+                menu.addAction(action)
+
+            # Create a toolbar button with the menu
+            button = QToolButton()
+            button.setText(folder_name)
+            button.setMenu(menu)
+            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            self.toolbar.addWidget(button)
 
     def spawn_module(self, name: str):
-        """Creates both the backend audio module and its visual representation."""
-        if name not in self.module_classes:
+        """Creates the backend module and adds its graphical ModuleItem to the scene."""
+        # Find class by name
+        cls = None
+        for folder_modules in self.module_folders.values():
+            for n, c in folder_modules:
+                if n == name:
+                    cls = c
+                    break
+            if cls:
+                break
+
+        if cls is None:
             print(f"Unknown module: {name}")
             return
 
-        module_class = self.module_classes[name]
-        module = module_class()
+        module = cls()
 
-        # Register the module with the main window
+        # Register module
         if isinstance(module, EndpointModule):
             self.main_window.endpoints.append(module)
         else:
             self.main_window.modules.append(module)
 
-        # Create the graphical representation
+        # Create visual representation
         item = ModuleItem(module)
         item.setPos(100, 100)
         self.main_window.scene.addItem(item)

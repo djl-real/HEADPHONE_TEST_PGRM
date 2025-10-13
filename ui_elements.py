@@ -83,11 +83,11 @@ def mousePressEvent(self, event):
                     pass
 
         # Remove visual connection
-        self.scene().removeItem(self.connection)
         if self.connection.start_node:
             self.connection.start_node.connection = None
         if self.connection.end_node:
             self.connection.end_node.connection = None
+        self.scene().removeItem(self.connection)
         self.connection = None
 
     # Start a new connection if this is an output node
