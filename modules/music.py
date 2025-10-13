@@ -3,17 +3,18 @@ import os
 import numpy as np
 import soundfile as sf
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, QLabel, QSlider, QCheckBox, QAbstractItemView
+    QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
+    QSlider, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer
 from audio_module import AudioModule
-from nodes import OutputNode
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
+MAX_BLOCK_HOLD = 15  # Maximum number of blocks to store for hold
 
 
 class Music(AudioModule):
-    """Music player module with playlist, scrubbing, reverse, and automix support."""
+    """Music player module with playlist, scrubbing, reverse, and hold buffer support."""
 
     def __init__(self, sample_rate=44100):
         super().__init__(input_count=0, output_count=1)
@@ -28,13 +29,19 @@ class Music(AudioModule):
         self.pan = 0.0
         self.volume = -6.0
         self.reverse = False
-        self.automix = False
-        self.crossfade_time = 2.0  # seconds
+        self.hold_active = False
+
+        # Hold buffer
+        self.block_hold = 10
+        self.hold_buffer = [np.zeros((512, 2), dtype=np.float32) for _ in range(MAX_BLOCK_HOLD)]
+        self.hold_pointer = 0
+
+        # Scrub user flag
+        self.scrubbing_user = False
 
         # Data
         self.songs = []
         self.song_names = []
-
         self.load_playlist()
 
     # --- Playlist Management ---
@@ -64,7 +71,6 @@ class Music(AudioModule):
 
     # --- Playback Logic ---
     def toggle_play(self, index: int):
-        """Play or pause; reset only when switching tracks."""
         if self.current_index == index:
             self.playing = not self.playing
         else:
@@ -72,57 +78,72 @@ class Music(AudioModule):
             self.play_buffer = self.songs[index]
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
+            self.hold_buffer = [np.zeros_like(self.hold_buffer[0]) for _ in range(MAX_BLOCK_HOLD)]
+            self.hold_pointer = 0
 
     def stop_playback(self):
         self.playing = False
         self.playhead = 0.0
-
-    def next_track(self):
-        if self.current_index is not None and self.current_index + 1 < len(self.songs):
-            self.toggle_play(self.current_index + 1)
+        self.hold_buffer = [np.zeros_like(self.hold_buffer[0]) for _ in range(MAX_BLOCK_HOLD)]
+        self.hold_pointer = 0
 
     def generate(self, frames: int) -> np.ndarray:
         out = np.zeros((frames, 2), dtype=np.float32)
-        if not self.playing or self.current_index is None or self.current_index >= len(self.songs):
+        if self.current_index is None or self.current_index >= len(self.songs):
+            return out
+
+        if self.hold_active:
+            # Replay last block_hold blocks
+            for i in range(frames):
+                sample_idx = i % self.hold_buffer[0].shape[0]
+                out[i] = self.hold_buffer[self.hold_pointer][sample_idx]
+            self.hold_pointer = (self.hold_pointer + 1) % self.block_hold
+            return out.astype(np.float32)
+
+        if not self.playing:
             return out
 
         track = self.play_buffer
+        block = np.zeros((frames, 2), dtype=np.float32)
+
         for i in range(frames):
             idx = int(self.playhead)
             if idx < 0 or idx >= len(track) - 1:
                 self.playing = False
-                if self.automix:
-                    self.next_track()
                 break
-
             next_idx = idx + (1 if not self.reverse else -1)
             frac = abs(self.playhead - idx)
             sample = (1 - frac) * track[idx] + frac * track[next_idx]
-            out[i] = sample
+            block[i] = sample
             self.playhead += self.pitch * (-1 if self.reverse else 1)
 
         # Apply volume and pan
         gain = 10 ** (self.volume / 20.0)
         left_gain = gain * (1 - max(0, self.pan))
         right_gain = gain * (1 - max(0, -self.pan))
-        out[:, 0] *= left_gain
-        out[:, 1] *= right_gain
-        return out.astype(np.float32)
+        block[:, 0] *= left_gain
+        block[:, 1] *= right_gain
+
+        # Add block to hold buffer, cycling pointer
+        self.hold_buffer[self.hold_pointer % MAX_BLOCK_HOLD] = block.copy()
+        self.hold_pointer = (self.hold_pointer + 1) % MAX_BLOCK_HOLD
+
+        return block.astype(np.float32)
 
     # --- UI ---
     def get_ui(self) -> QWidget:
         widget = QWidget()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
+        layout = QVBoxLayout(widget)
 
-        # Playlist (drag reorder)
+        # Playlist
         self.list_widget = QListWidget()
         for name in self.song_names:
             self.list_widget.addItem(name)
         self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
 
-        # Buttons: Play/Pause, Stop, Reverse
+        # Buttons
         btn_layout = QHBoxLayout()
         play_btn = QPushButton("Play/Pause")
         stop_btn = QPushButton("Stop")
@@ -145,76 +166,84 @@ class Music(AudioModule):
         layout.addWidget(pitch_slider)
         pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", val / 100.0))
 
-        # --- Scrub slider (live playhead + auto update) ---
+        # Scrub slider
         layout.addWidget(QLabel("Scrub"))
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
         layout.addWidget(self.scrub_slider)
 
-        self.scrubbing_user = False
-
         def on_scrub_start():
             self.scrubbing_user = True
 
         def on_scrub_end():
             self.scrubbing_user = False
-            on_scrub(self.scrub_slider.value())
+            self.update_playhead_from_scrub(self.scrub_slider.value())
 
         def on_scrub(val):
-            if self.current_index is not None and self.current_index < len(self.songs):
-                track_len = len(self.songs[self.current_index])
-                self.playhead = (val / 1000.0) * track_len
+            if self.scrubbing_user:
+                self.update_playhead_from_scrub(val)
 
         self.scrub_slider.sliderPressed.connect(on_scrub_start)
         self.scrub_slider.sliderReleased.connect(on_scrub_end)
-        self.scrub_slider.valueChanged.connect(lambda val: on_scrub(val) if self.scrubbing_user else None)
+        self.scrub_slider.valueChanged.connect(on_scrub)
 
-        # --- Timer for updating scrub slider ---
-        self.update_timer = QTimer()
-        self.update_timer.setInterval(50)  # 20 updates per second
+        # Hold slider + button
+        hold_layout = QHBoxLayout()
+        self.hold_slider = QSlider(Qt.Orientation.Vertical)
+        self.hold_slider.setMinimum(0)
+        self.hold_slider.setMaximum(MAX_BLOCK_HOLD)
+        self.hold_slider.setValue(self.block_hold)
+        self.hold_slider.setToolTip("Number of blocks to hold")
+        hold_layout.addWidget(self.hold_slider)
+
+        self.hold_button = QPushButton("Hold")
+        self.hold_button.setCheckable(True)
+        self.hold_button.setFixedSize(50, 50)
+        self.hold_button.setStyleSheet("""
+            QPushButton {
+                border-radius: 25px;
+                background-color: #3498db;
+                color: white;
+                font-weight: bold;
+            }
+            QPushButton:checked {
+                background-color: #2ecc71;
+            }
+        """)
+        hold_layout.addWidget(self.hold_button)
+
+        layout.addLayout(hold_layout)
+
+        self.hold_slider.valueChanged.connect(lambda val: setattr(self, "block_hold", val))
+        self.hold_button.toggled.connect(lambda state: setattr(self, "hold_active", state))
+
+        # Timer for scrub slider
+        self.update_timer = QTimer(widget)
+        self.update_timer.setInterval(50)
         self.update_timer.timeout.connect(self.update_scrub_slider)
         self.update_timer.start()
 
-        # Automix controls
-        layout.addWidget(QLabel("Automix"))
-        automix_check = QCheckBox("Enable Automix")
-        layout.addWidget(automix_check)
-        automix_check.stateChanged.connect(lambda s: setattr(self, "automix", s == Qt.CheckState.Checked))
-
-        self.crossfade_label = QLabel(f"Crossfade: {self.crossfade_time:.1f}s")
-        layout.addWidget(self.crossfade_label)
-        crossfade_slider = QSlider(Qt.Orientation.Horizontal)
-        crossfade_slider.setMinimum(0)
-        crossfade_slider.setMaximum(10)
-        crossfade_slider.setValue(int(self.crossfade_time))
-        layout.addWidget(crossfade_slider)
-        crossfade_slider.valueChanged.connect(self.on_crossfade_change)
-
         return widget
 
+    def update_playhead_from_scrub(self, val):
+        if self.current_index is not None and 0 <= self.current_index < len(self.songs):
+            track_len = len(self.songs[self.current_index])
+            self.playhead = (val / 1000.0) * track_len
 
-    # --- Helper method to update scrub position ---
     def update_scrub_slider(self):
         if not hasattr(self, "scrub_slider") or self.scrub_slider is None:
             return
         if not self.scrubbing_user and self.playing and self.current_index is not None:
             track = self.songs[self.current_index]
             if len(track) > 0:
-                progress = np.clip(self.playhead / len(track), 0.0, 1.0)
+                progress = min(max(self.playhead / len(track), 0.0), 1.0)
                 self.scrub_slider.blockSignals(True)
                 self.scrub_slider.setValue(int(progress * 1000))
                 self.scrub_slider.blockSignals(False)
 
-
-    # --- Helper method for crossfade label ---
-    def on_crossfade_change(self, val):
-        self.crossfade_time = float(val)
-        self.crossfade_label.setText(f"Crossfade: {val:.1f}s")
-
     def cleanup(self):
-            # Stop the timer to avoid calling a deleted slider
-        if hasattr(self, "update_timer") and self.update_timer.isActive():
+        if hasattr(self, "update_timer") and self.update_timer is not None:
             self.update_timer.stop()
-        self.update_timer = None
-        self.cleanup()
+            self.update_timer.deleteLater()
+            self.update_timer = None
