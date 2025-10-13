@@ -106,8 +106,6 @@ class Music(AudioModule):
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        layout.addWidget(QLabel("Music Player"))
-
         # Playlist
         self.list_widget = QListWidget()
         for name in self.song_names:
@@ -140,17 +138,5 @@ class Music(AudioModule):
         def on_pitch_change(val):
             self.pitch = val / 100.0
         pitch_slider.valueChanged.connect(on_pitch_change)
-
-        # Pan slider
-        layout.addWidget(QLabel("Pan"))
-        pan_slider = QSlider(Qt.Orientation.Horizontal)
-        pan_slider.setMinimum(-100)
-        pan_slider.setMaximum(100)
-        pan_slider.setValue(int(self.pan * 100))
-        layout.addWidget(pan_slider)
-
-        def on_pan_change(val):
-            self.pan = val / 100.0
-        pan_slider.valueChanged.connect(on_pan_change)
 
         return widget

@@ -9,6 +9,7 @@ from modules.static import Noise
 from modules.pan import Pan
 from modules.music import Music
 from modules.soundboard import Soundboard
+from modules.envelope import EnvelopeGenerator
 from audio_module import AudioModule
 from ui_elements import ModuleItem
 
@@ -26,7 +27,7 @@ class ToolbarManager:
         # Organize modules by folder
         self.module_folders = {
             "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard), ("LFO", LFO)],
-            "Effects": [("Bandpass", Bandpass), ("Pan", Pan)],
+            "Effects": [("Bandpass", Bandpass), ("Pan", Pan), ("Envelope", EnvelopeGenerator)],
             "Master": [("Endpoint", EndpointModule)],
         }
 
