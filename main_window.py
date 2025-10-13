@@ -4,7 +4,7 @@ import numpy as np
 import sounddevice as sd
 from PyQt6.QtWidgets import QApplication, QMainWindow, QGraphicsView, QGraphicsScene
 from PyQt6.QtGui import QBrush, QColor, QWheelEvent, QPainter, QPen
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPointF
 
 from audio_module import AudioModule
 from toolbar_manager import ToolbarManager
@@ -16,16 +16,16 @@ class WorkspaceScene(QGraphicsScene):
     def __init__(self):
         super().__init__()
         self.setBackgroundBrush(QColor(30, 30, 30))  # fallback background
-
         # Grid settings
-        self.grid_size = 400        # pixels between grid lines
-        self.grid_color = QColor(160, 160, 160)  # faint gray
+        self.grid_size = 25        # pixels between grid lines
+        self.grid_color = QColor(50, 50, 50)  # faint gray
         self.grid_line_width = 2    # thickness of grid lines
 
     def drawBackground(self, painter, rect):
-        """Draw a subtle grid pattern in the background with thicker lines."""
-        super().drawBackground(painter, rect)
+        # Fill with dark background
+        painter.fillRect(rect, QColor(25, 25, 25))
 
+        # Grid parameters
         left = int(rect.left()) - (int(rect.left()) % self.grid_size)
         top = int(rect.top()) - (int(rect.top()) % self.grid_size)
 
@@ -33,16 +33,16 @@ class WorkspaceScene(QGraphicsScene):
         pen.setWidth(self.grid_line_width)
         painter.setPen(pen)
 
-        # Draw vertical lines
+        # Vertical lines
         x = left
         while x < rect.right():
-            painter.drawLine(x, rect.top(), x, rect.bottom())
+            painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
             x += self.grid_size
 
-        # Draw horizontal lines
+        # Horizontal lines
         y = top
         while y < rect.bottom():
-            painter.drawLine(rect.left(), y, rect.right(), y)
+            painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += self.grid_size
 
 
@@ -51,7 +51,8 @@ class WorkspaceView(QGraphicsView):
     def __init__(self, scene):
         super().__init__(scene)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setBackgroundBrush(QBrush(QColor(25, 25, 25)))
+        # self.setBackgroundBrush(QBrush(QColor(25, 25, 25)))
+        self.setBackgroundBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.zoom_factor = 1.15
         self.last_mouse_pos = None

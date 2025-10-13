@@ -22,19 +22,17 @@ class ConnectionPath(QGraphicsPathItem):
         self.setZValue(-1)
         self.setPen(QPen(color, width))
 
-        # Make sure this path never grabs the mouse or accepts hover events
-        # — prevents repeated grab/ungrab warnings.
+        # Prevents repeated grab/ungrab warnings
         self.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
         self.setAcceptHoverEvents(False)
         self.setAcceptTouchEvents(False)
 
-        # Add to scene if provided (the caller should supply scene once)
-        if scene is not None and scene is not None:
+        # Add to scene if provided
+        if scene is not None:
             scene.addItem(self)
 
-        # Register references on nodes (each node has at most one connection)
+        # Register references on nodes
         try:
-            # set start node reference
             self.start_node.connection = self
         except Exception:
             pass
@@ -64,43 +62,30 @@ class ConnectionPath(QGraphicsPathItem):
         start = self.start_node.scenePos() + QPointF(self.start_node.RADIUS, 0)
         path = QPainterPath(start)
         dx = (end_pos.x() - start.x()) * 0.5
-        # Control points keep the curve smooth
         path.cubicTo(start + QPointF(dx, 0), end_pos - QPointF(dx, 0), end_pos)
         self.setPath(path)
 
     def disconnect(self):
-        """
-        Sever the connection both visually and in the audio backend.
-        This function is idempotent and safe to call multiple times.
-        """
+        """Sever the connection visually and in the audio backend."""
         start_node = getattr(self, "start_node", None)
         end_node = getattr(self, "end_node", None)
 
-        # Backend disconnect: call output_node.disconnect() if available.
-        # OutputNode.disconnect() should clear backend link to input node.
+        # Backend disconnect via node_obj
         try:
-            if start_node and getattr(start_node, "audio_module", None):
-                out = getattr(start_node.audio_module, "output_node", None)
-                if out:
-                    out.disconnect()
-        except Exception:
-            # be defensive: don't let audio exceptions break UI cleanup
-            pass
-
-        # Clear UI connection references on nodes
-        try:
-            if start_node:
-                start_node.connection = None
+            if start_node and getattr(start_node, "node_obj", None):
+                start_node.node_obj.disconnect()
         except Exception:
             pass
 
-        try:
-            if end_node:
-                end_node.connection = None
-        except Exception:
-            pass
+        # Clear UI references
+        for node in (start_node, end_node):
+            try:
+                if node:
+                    node.connection = None
+            except Exception:
+                pass
 
-        # Remove the path from its scene (if it still belongs to one)
+        # Remove the path from its scene
         try:
             sc = self.scene()
             if sc is not None:
@@ -108,17 +93,19 @@ class ConnectionPath(QGraphicsPathItem):
         except Exception:
             pass
 
-        # Clear internal refs
         self.start_node = None
         self.end_node = None
 
 
 class NodeCircle(QGraphicsEllipseItem):
+    """Clickable circle representing an input or output node."""
+
     RADIUS = 10
 
-    def __init__(self, parent_item, node_type="output"):
+    def __init__(self, parent_item, node_type="output", node_obj=None):
         super().__init__(-self.RADIUS, -self.RADIUS, 2 * self.RADIUS, 2 * self.RADIUS, parent_item)
         self.node_type = node_type  # "input" or "output"
+        self.node_obj = node_obj    # reference to backend node
         self.connection: ConnectionPath | None = None
 
         # UI parent and backend module references
@@ -128,32 +115,28 @@ class NodeCircle(QGraphicsEllipseItem):
         color = QColor(150, 80, 200) if node_type == "output" else QColor(80, 150, 200)
         self.setBrush(QBrush(color))
 
-        # Important flags for interaction
+        # Interaction flags
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsScenePositionChanges, True)
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setAcceptTouchEvents(True)
 
-        # Temporary connection (when dragging) is stored here
+        # Temporary connection (during drag)
         self.temp_connection: ConnectionPath | None = None
 
-    # Clicking a node severs an existing connection (if any) and starts a new drag for output nodes.
     def mousePressEvent(self, event):
-        # If there is an existing connection, tear it down first (safe & idempotent)
+        # Disconnect any existing connection
         if self.connection:
             try:
                 self.connection.disconnect()
             except Exception:
-                # swallow errors; disconnect() is defensive already
                 pass
             self.connection = None
 
-        # If the user presses an output node, start a new temporary connection
+        # If output node, start dragging a new connection
         if self.node_type == "output":
-            # Create temp connection and add it to scene — ConnectionPath adds itself to scene when scene passed
             try:
-                # Some callers may not have a scene yet (defensive)
                 sc = self.scene()
                 self.temp_connection = ConnectionPath(self, scene=sc)
             except Exception:
@@ -163,7 +146,6 @@ class NodeCircle(QGraphicsEllipseItem):
 
     def mouseMoveEvent(self, event):
         if self.temp_connection:
-            # Convert mouse position to scene coordinates, update temporary curve
             try:
                 scene_pos = self.mapToScene(event.pos())
                 self.temp_connection.update_path_from_pos(scene_pos)
@@ -172,58 +154,39 @@ class NodeCircle(QGraphicsEllipseItem):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        # When releasing an output drag, finalize connection if over an input node
+        # When releasing output drag, finalize connection if over input node
         if self.temp_connection:
             try:
                 scene_pos = self.mapToScene(event.pos())
                 items = self.scene().items(scene_pos) if self.scene() is not None else []
-                # find an input NodeCircle under the mouse
                 target_input = next((it for it in items if isinstance(it, NodeCircle) and it.node_type == "input"), None)
 
                 if target_input:
-                    # connect backend nodes if possible
-                    if self.audio_module and target_input.audio_module:
-                        out = getattr(self.audio_module, "output_node", None)
-                        inp = getattr(target_input.audio_module, "input_node", None)
-                        if out and inp:
-                            try:
-                                out.connect(inp)
-                            except Exception:
-                                # swallow backend connect exceptions; still attempt UI hookup
-                                pass
+                    # connect backend nodes directly
+                    if self.node_obj and target_input.node_obj:
+                        try:
+                            self.node_obj.connect(target_input.node_obj)
+                        except Exception:
+                            pass
 
-                    # Finalize UI connection
+                    # finalize UI connection
                     self.temp_connection.end_node = target_input
-                    # set both node references
                     self.connection = self.temp_connection
-                    try:
-                        target_input.connection = self.temp_connection
-                    except Exception:
-                        pass
-                    # finalize path geometry
+                    target_input.connection = self.temp_connection
                     self.temp_connection.update_path()
+
                 else:
-                    # Not dropped on an input — remove the temporary path cleanly.
+                    # Not dropped on an input — remove the temp path
                     try:
-                        # disconnect() will remove the path from the scene and clean internal refs
                         self.temp_connection.disconnect()
                     except Exception:
-                        # as fallback try removing from scene
                         sc = self.scene()
-                        if sc and self.temp_connection and sc.items and self.temp_connection in sc.items():
-                            try:
-                                sc.removeItem(self.temp_connection)
-                            except Exception:
-                                pass
+                        if sc and self.temp_connection and self.temp_connection in sc.items():
+                            sc.removeItem(self.temp_connection)
 
-                # clear the temporary handle
                 self.temp_connection = None
             except Exception:
-                # be defensive: ensure temp_connection cleared
-                try:
-                    self.temp_connection = None
-                except Exception:
-                    pass
+                self.temp_connection = None
 
         super().mouseReleaseEvent(event)
 
@@ -244,7 +207,7 @@ class NodeCircle(QGraphicsEllipseItem):
 
 
 class CloseButton(QGraphicsSimpleTextItem):
-    """Clickable 'X' to close and delete a module (visual only here)."""
+    """Clickable 'X' to close and delete a module (visual only)."""
 
     def __init__(self, parent_module_item):
         super().__init__("✕", parent_module_item)
@@ -253,12 +216,9 @@ class CloseButton(QGraphicsSimpleTextItem):
         self.setZValue(10)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.parent_module_item = parent_module_item
-
-        # Prevent the close button from dragging or selecting the module item when clicked
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
 
     def mousePressEvent(self, event):
-        # Ask the parent to cleanup and remove itself. The parent does scene removal.
         try:
             if self.parent_module_item:
                 self.parent_module_item.cleanup()
@@ -268,14 +228,11 @@ class CloseButton(QGraphicsSimpleTextItem):
 
 
 class ModuleItem(QGraphicsRectItem):
-    """A graphics item representing an audio module with dynamic UI and close button.
-    Supports multiple input/output nodes.
-    """
+    """Graphics item representing an audio module with multiple I/O nodes."""
 
     DEFAULT_WIDTH = 180
     DEFAULT_HEIGHT = 100
-
-    NODE_SPACING = 20  # vertical spacing between multiple nodes
+    NODE_SPACING = 20
 
     def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
@@ -283,7 +240,7 @@ class ModuleItem(QGraphicsRectItem):
         self.width_override = width_override
         self.height_override = height_override
 
-        # Visuals / interaction flags
+        # Visuals
         self.setBrush(QBrush(QColor(40, 40, 40)))
         self.setPen(QPen(QColor(120, 120, 120)))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
@@ -298,31 +255,29 @@ class ModuleItem(QGraphicsRectItem):
         # Close button
         self.close_button = CloseButton(self)
 
-        # Node circles (support multiple nodes)
+        # Node circles
         self.input_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "input_nodes", [])):
-            nc = NodeCircle(self, "input")
+            nc = NodeCircle(self, "input", node_obj=node)
             nc.setZValue(2)
             self.input_nodes.append(nc)
 
         self.output_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "output_nodes", [])):
-            nc = NodeCircle(self, "output")
+            nc = NodeCircle(self, "output", node_obj=node)
             nc.setZValue(2)
             self.output_nodes.append(nc)
 
-        # For backward compatibility
+        # Backward compatibility
         self.input_node = self.input_nodes[0] if self.input_nodes else None
         self.output_node = self.output_nodes[0] if self.output_nodes else None
 
-        # Embed module UI (if provided) and compute sizing
+        # Embed UI
         self._proxy_widget = None
         self.get_ui()
 
     def get_ui(self):
-        """Embed the module's custom QWidget UI and dynamically resize ModuleItem."""
-
-        # Remove existing proxy if any
+        """Embed the module's custom QWidget UI."""
         if self._proxy_widget:
             try:
                 sc = self.scene()
@@ -332,7 +287,6 @@ class ModuleItem(QGraphicsRectItem):
                 pass
             self._proxy_widget = None
 
-        # Attempt to get module UI
         ui_widget = None
         if hasattr(self.module, "get_ui"):
             try:
@@ -340,7 +294,6 @@ class ModuleItem(QGraphicsRectItem):
             except Exception:
                 pass
 
-        # Default size if no UI
         width, height = self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT
         label_height = self.label.boundingRect().height()
         padding = 10
@@ -359,35 +312,31 @@ class ModuleItem(QGraphicsRectItem):
             height = max(height, proxy_rect.height() + label_height + 20)
             self._proxy_widget = proxy
 
-        # Override with user-defined dimensions
         if self.width_override:
             width = max(width, self.width_override)
         if self.height_override:
             height = max(height, self.height_override)
 
-        # Apply rect
         self.setRect(0, 0, width, height)
 
-        # Position input nodes vertically along left
+        # Position input nodes
         if self.input_nodes:
             spacing = self.NODE_SPACING
             start_y = (height - spacing * (len(self.input_nodes) - 1)) / 2
             for idx, node in enumerate(self.input_nodes):
                 node.setPos(0, start_y + idx * spacing)
 
-        # Position output nodes vertically along right
+        # Position output nodes
         if self.output_nodes:
             spacing = self.NODE_SPACING
             start_y = (height - spacing * (len(self.output_nodes) - 1)) / 2
             for idx, node in enumerate(self.output_nodes):
                 node.setPos(width, start_y + idx * spacing)
 
-        # Move close button to top-right
         self.close_button.setPos(width - 20, 2)
 
     def cleanup(self):
-        """Safely clean up the module and remove it from scene."""
-        # Disconnect all node connections
+        """Safely clean up and remove module from scene."""
         for node in self.input_nodes + self.output_nodes:
             if node.connection:
                 try:
@@ -402,7 +351,6 @@ class ModuleItem(QGraphicsRectItem):
                     pass
                 node.temp_connection = None
 
-        # Backend cleanup
         try:
             if hasattr(self.module, "destroy"):
                 self.module.destroy()
@@ -411,7 +359,6 @@ class ModuleItem(QGraphicsRectItem):
         except Exception:
             pass
 
-        # Remove proxy and rect item from scene safely
         sc = self.scene()
         if sc:
             if self._proxy_widget:
@@ -421,7 +368,6 @@ class ModuleItem(QGraphicsRectItem):
                     pass
             QTimer.singleShot(1, lambda: sc.removeItem(self) if self.scene() else None)
 
-        # Break references
         self.module = None
         self.input_nodes = []
         self.output_nodes = []
@@ -430,7 +376,6 @@ class ModuleItem(QGraphicsRectItem):
         self._proxy_widget = None
 
     def itemChange(self, change, value):
-        # Update connected paths when module moves
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             for node in self.input_nodes + self.output_nodes:
                 if getattr(node, "connection", None):

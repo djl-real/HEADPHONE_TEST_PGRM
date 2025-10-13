@@ -196,6 +196,8 @@ class Music(AudioModule):
 
     # --- Helper method to update scrub position ---
     def update_scrub_slider(self):
+        if not hasattr(self, "scrub_slider") or self.scrub_slider is None:
+            return
         if not self.scrubbing_user and self.playing and self.current_index is not None:
             track = self.songs[self.current_index]
             if len(track) > 0:
@@ -209,3 +211,10 @@ class Music(AudioModule):
     def on_crossfade_change(self, val):
         self.crossfade_time = float(val)
         self.crossfade_label.setText(f"Crossfade: {val:.1f}s")
+
+    def cleanup(self):
+            # Stop the timer to avoid calling a deleted slider
+        if hasattr(self, "update_timer") and self.update_timer.isActive():
+            self.update_timer.stop()
+        self.update_timer = None
+        self.cleanup()
