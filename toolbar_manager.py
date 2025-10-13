@@ -6,6 +6,8 @@ from modules.endpoint import EndpointModule
 from modules.LFO import LFO
 from modules.vco import VCO
 from modules.static import Noise
+from modules.pan import Pan
+from modules.music import Music
 from audio_module import AudioModule
 from ui_elements import ModuleItem
 
@@ -22,8 +24,8 @@ class ToolbarManager:
 
         # Organize modules by folder
         self.module_folders = {
-            "Source": [("LFO", LFO), ("VCO", VCO), ("Static", Noise)],
-            "Effects": [("Bandpass", Bandpass)],
+            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("LFO", LFO)],
+            "Effects": [("Bandpass", Bandpass), ("Pan", Pan)],
             "Master": [("Endpoint", EndpointModule)],
         }
 

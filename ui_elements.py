@@ -65,36 +65,36 @@ class NodeCircle(QGraphicsEllipseItem):
 
         self.temp_connection: ConnectionPath | None = None
 
-def mousePressEvent(self, event):
-    # Remove existing connection if present
-    if self.connection:
-        # Safely disconnect backend audio nodes
+    def mousePressEvent(self, event):
+        # Remove existing connection if present
+        if self.connection:
+            # Safely disconnect backend audio nodes
+            if self.node_type == "output":
+                if self.audio_module and self.connection.end_node and self.connection.end_node.audio_module:
+                    try:
+                        self.audio_module.output_node.disconnect(self.connection.end_node.audio_module.input_node)
+                    except AttributeError:
+                        pass  # ignore if disconnect is not implemented
+            elif self.node_type == "input":
+                if self.audio_module and self.connection.start_node and self.connection.start_node.audio_module:
+                    try:
+                        self.connection.start_node.audio_module.output_node.disconnect(self.audio_module.input_node)
+                    except AttributeError:
+                        pass
+
+            # Remove visual connection
+            if self.connection.start_node:
+                self.connection.start_node.connection = None
+            if self.connection.end_node:
+                self.connection.end_node.connection = None
+            self.scene().removeItem(self.connection)
+            self.connection = None
+
+        # Start a new connection if this is an output node
         if self.node_type == "output":
-            if self.audio_module and self.connection.end_node and self.connection.end_node.audio_module:
-                try:
-                    self.audio_module.output_node.disconnect(self.connection.end_node.audio_module.input_node)
-                except AttributeError:
-                    pass  # ignore if disconnect is not implemented
-        elif self.node_type == "input":
-            if self.audio_module and self.connection.start_node and self.connection.start_node.audio_module:
-                try:
-                    self.connection.start_node.audio_module.output_node.disconnect(self.audio_module.input_node)
-                except AttributeError:
-                    pass
+            self.temp_connection = ConnectionPath(self, scene=self.scene())
 
-        # Remove visual connection
-        if self.connection.start_node:
-            self.connection.start_node.connection = None
-        if self.connection.end_node:
-            self.connection.end_node.connection = None
-        self.scene().removeItem(self.connection)
-        self.connection = None
-
-    # Start a new connection if this is an output node
-    if self.node_type == "output":
-        self.temp_connection = ConnectionPath(self, scene=self.scene())
-
-    super().mousePressEvent(event)
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.temp_connection:

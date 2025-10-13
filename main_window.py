@@ -3,7 +3,7 @@ import sys
 import numpy as np
 import sounddevice as sd
 from PyQt6.QtWidgets import QApplication, QMainWindow, QGraphicsView, QGraphicsScene
-from PyQt6.QtGui import QBrush, QColor, QWheelEvent, QPainter
+from PyQt6.QtGui import QBrush, QColor, QWheelEvent, QPainter, QPen
 from PyQt6.QtCore import Qt
 
 from audio_module import AudioModule
@@ -12,47 +12,38 @@ from ui_elements import ModuleItem, NodeCircle, ConnectionPath
 
 
 class WorkspaceScene(QGraphicsScene):
-    """Custom scene to handle temporary connection drag."""
+    """Custom scene with background grid only."""
     def __init__(self):
         super().__init__()
-        self.temp_connection: ConnectionPath | None = None
-        self.dragging_output: NodeCircle | None = None
-        self.setBackgroundBrush(QColor(30, 30, 30))
+        self.setBackgroundBrush(QColor(30, 30, 30))  # fallback background
 
-    def mousePressEvent(self, event):
-        item = self.itemAt(event.scenePos(), self.views()[0].transform())
-        if isinstance(item, NodeCircle) and item.node_type == "output":
-            self.dragging_output = item
-            self.temp_connection = ConnectionPath(self.dragging_output, scene=self)
-        super().mousePressEvent(event)
+        # Grid settings
+        self.grid_size = 400        # pixels between grid lines
+        self.grid_color = QColor(160, 160, 160)  # faint gray
+        self.grid_line_width = 2    # thickness of grid lines
 
-    def mouseMoveEvent(self, event):
-        if self.temp_connection and self.dragging_output:
-            self.temp_connection.update_path_from_pos(event.scenePos())
-        super().mouseMoveEvent(event)
+    def drawBackground(self, painter, rect):
+        """Draw a subtle grid pattern in the background with thicker lines."""
+        super().drawBackground(painter, rect)
 
-    def mouseReleaseEvent(self, event):
-        if self.temp_connection and self.dragging_output:
-            items = self.items(event.scenePos())
-            target_input = next(
-                (i for i in items if isinstance(i, NodeCircle) and i.node_type == "input"), None
-            )
-            if target_input:
-                # Connect backend nodes
-                if self.dragging_output.audio_module and target_input.audio_module:
-                    self.dragging_output.audio_module.output_node.connect(target_input.audio_module.input_node)
+        left = int(rect.left()) - (int(rect.left()) % self.grid_size)
+        top = int(rect.top()) - (int(rect.top()) % self.grid_size)
 
-                # Finalize path references
-                self.temp_connection.end_node = target_input
-                self.dragging_output.connection = self.temp_connection
-                target_input.connection = self.temp_connection
-                self.temp_connection.update_path()
-            else:
-                self.removeItem(self.temp_connection)
+        pen = QPen(self.grid_color)
+        pen.setWidth(self.grid_line_width)
+        painter.setPen(pen)
 
-            self.temp_connection = None
-            self.dragging_output = None
-        super().mouseReleaseEvent(event)
+        # Draw vertical lines
+        x = left
+        while x < rect.right():
+            painter.drawLine(x, rect.top(), x, rect.bottom())
+            x += self.grid_size
+
+        # Draw horizontal lines
+        y = top
+        while y < rect.bottom():
+            painter.drawLine(rect.left(), y, rect.right(), y)
+            y += self.grid_size
 
 
 class WorkspaceView(QGraphicsView):
