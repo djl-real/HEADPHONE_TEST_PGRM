@@ -1,6 +1,8 @@
 # audio_module.py
 import numpy as np
 from nodes import InputNode, OutputNode
+from PyQt6.QtWidgets import QWidget
+
 
 class AudioModule:
     """Base class for all modules, including graphical node support."""
@@ -18,3 +20,11 @@ class AudioModule:
     def generate(self, frames: int) -> np.ndarray:
         """Override in child classes to produce audio."""
         return np.zeros((frames, 2), dtype=np.float32)
+    
+    def get_ui(self) -> QWidget | None:
+        """
+        Returns a QWidget representing the module's custom UI.
+        By default, modules have no UI.
+        Child classes (like EndpointModule) can override this.
+        """
+        return None

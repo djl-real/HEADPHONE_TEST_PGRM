@@ -1,5 +1,5 @@
 # ui_elements.py
-from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsItem, QGraphicsTextItem
+from PyQt6.QtWidgets import QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsItem, QGraphicsTextItem, QGraphicsProxyWidget
 from PyQt6.QtGui import QBrush, QPen, QColor, QPainterPath
 from PyQt6.QtCore import QPointF, Qt
 
@@ -139,9 +139,30 @@ class ModuleItem(QGraphicsRectItem):
             self.output_node.setPos(self.WIDTH, self.HEIGHT / 2)
             self.output_node.setZValue(2)
 
+        # Add module-specific UI if available
+        self.get_ui()
+
+    def get_ui(self):
+        """
+        Checks if the module has a custom QWidget UI (via AudioModule.get_ui)
+        and embeds it inside this ModuleItem using QGraphicsProxyWidget.
+        """
+        ui_widget = None
+        if hasattr(self.module, "get_ui"):
+            ui_widget = self.module.get_ui()
+
+        if ui_widget is not None:
+            # Embed in QGraphicsScene
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(ui_widget)
+            proxy.setPos(10, 25)  # position below the label
+            proxy.setZValue(2)
+            # Optional: resize ModuleItem to fit the UI if needed
+            # self.setRect(0, 0, max(self.WIDTH, ui_widget.width() + 20),
+            #              self.HEIGHT + ui_widget.height() + 10)
+
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            print("moved")
             # Update the connection paths for input/output nodes
             for node in [self.input_node, self.output_node]:
                 if node and node.connection:
