@@ -3,9 +3,9 @@ import os
 import numpy as np
 import soundfile as sf
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, QLabel, QSlider
+    QWidget, QVBoxLayout, QListWidget, QPushButton, QHBoxLayout, QLabel, QSlider, QCheckBox, QAbstractItemView
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from audio_module import AudioModule
 from nodes import OutputNode
 
@@ -13,7 +13,7 @@ AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
 
 class Music(AudioModule):
-    """Music player module with pitch, pan, and selectable track."""
+    """Music player module with playlist, scrubbing, reverse, and automix support."""
 
     def __init__(self, sample_rate=44100):
         super().__init__(has_input=False, has_output=True)
@@ -25,19 +25,23 @@ class Music(AudioModule):
         self.current_index = None
         self.play_buffer = np.zeros((0, 2), dtype=np.float32)
         self.playhead = 0.0
-        self.pitch = 1.0      # speed factor
-        self.pan = 0.0        # -1 left → +1 right
-        self.volume = -6.0    # dB
+        self.pitch = 1.0
+        self.pan = 0.0
+        self.volume = -6.0
+        self.reverse = False
+        self.automix = False
+        self.crossfade_time = 2.0  # seconds
+
+        # Data
         self.songs = []
         self.song_names = []
 
-        # Load playlist
         self.load_playlist()
 
+    # --- Playlist Management ---
     def load_playlist(self):
         playlist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlist"))
-        if not os.path.exists(playlist_dir):
-            os.makedirs(playlist_dir)
+        os.makedirs(playlist_dir, exist_ok=True)
 
         self.songs.clear()
         self.song_names.clear()
@@ -50,7 +54,6 @@ class Music(AudioModule):
                     if data.ndim == 1:
                         data = np.column_stack((data, data))
                     if fs != self.sample_rate:
-                        # simple resample by linear interpolation
                         ratio = self.sample_rate / fs
                         idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
                         idx = idx[idx < len(data)]
@@ -60,20 +63,24 @@ class Music(AudioModule):
                 except Exception as e:
                     print(f"[Music] Failed to load {fname}: {e}")
 
+    # --- Playback Logic ---
     def toggle_play(self, index: int):
-        if self.playing and self.current_index == index:
-            self.playing = False
+        """Play or pause; reset only when switching tracks."""
+        if self.current_index == index:
+            self.playing = not self.playing
         else:
-            self.playing = True
             self.current_index = index
-            self.playhead = 0.0
-            if index < len(self.songs):
-                self.play_buffer = self.songs[index]
+            self.play_buffer = self.songs[index]
+            self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
+            self.playing = True
 
     def stop_playback(self):
         self.playing = False
-        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
         self.playhead = 0.0
+
+    def next_track(self):
+        if self.current_index is not None and self.current_index + 1 < len(self.songs):
+            self.toggle_play(self.current_index + 1)
 
     def generate(self, frames: int) -> np.ndarray:
         out = np.zeros((frames, 2), dtype=np.float32)
@@ -83,14 +90,17 @@ class Music(AudioModule):
         track = self.play_buffer
         for i in range(frames):
             idx = int(self.playhead)
-            if idx >= len(track) - 1:
+            if idx < 0 or idx >= len(track) - 1:
                 self.playing = False
+                if self.automix:
+                    self.next_track()
                 break
-            next_idx = idx + 1
-            frac = self.playhead - idx
+
+            next_idx = idx + (1 if not self.reverse else -1)
+            frac = abs(self.playhead - idx)
             sample = (1 - frac) * track[idx] + frac * track[next_idx]
             out[i] = sample
-            self.playhead += self.pitch
+            self.playhead += self.pitch * (-1 if self.reverse else 1)
 
         # Apply volume and pan
         gain = 10 ** (self.volume / 20.0)
@@ -100,32 +110,32 @@ class Music(AudioModule):
         out[:, 1] *= right_gain
         return out.astype(np.float32)
 
+    # --- UI ---
     def get_ui(self) -> QWidget:
-        """Return a QWidget with playlist, pitch, and pan controls."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        # Playlist
+        # Playlist (drag reorder)
         self.list_widget = QListWidget()
         for name in self.song_names:
             self.list_widget.addItem(name)
+        self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         layout.addWidget(self.list_widget)
 
-        # Play / Stop buttons
+        # Buttons: Play/Pause, Stop, Reverse
         btn_layout = QHBoxLayout()
         play_btn = QPushButton("Play/Pause")
         stop_btn = QPushButton("Stop")
+        reverse_btn = QPushButton("Reverse")
         btn_layout.addWidget(play_btn)
         btn_layout.addWidget(stop_btn)
+        btn_layout.addWidget(reverse_btn)
         layout.addLayout(btn_layout)
 
-        def on_play():
-            idx = self.list_widget.currentRow()
-            if idx >= 0:
-                self.toggle_play(idx)
-        play_btn.clicked.connect(on_play)
+        play_btn.clicked.connect(lambda: self.toggle_play(self.list_widget.currentRow()))
         stop_btn.clicked.connect(self.stop_playback)
+        reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
 
         # Pitch slider
         layout.addWidget(QLabel("Pitch"))
@@ -134,9 +144,69 @@ class Music(AudioModule):
         pitch_slider.setMaximum(200)
         pitch_slider.setValue(int(self.pitch * 100))
         layout.addWidget(pitch_slider)
+        pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", val / 100.0))
 
-        def on_pitch_change(val):
-            self.pitch = val / 100.0
-        pitch_slider.valueChanged.connect(on_pitch_change)
+        # --- Scrub slider (live playhead + auto update) ---
+        layout.addWidget(QLabel("Scrub"))
+        self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scrub_slider.setMinimum(0)
+        self.scrub_slider.setMaximum(1000)
+        layout.addWidget(self.scrub_slider)
+
+        self.scrubbing_user = False
+
+        def on_scrub_start():
+            self.scrubbing_user = True
+
+        def on_scrub_end():
+            self.scrubbing_user = False
+            on_scrub(self.scrub_slider.value())
+
+        def on_scrub(val):
+            if self.current_index is not None and self.current_index < len(self.songs):
+                track_len = len(self.songs[self.current_index])
+                self.playhead = (val / 1000.0) * track_len
+
+        self.scrub_slider.sliderPressed.connect(on_scrub_start)
+        self.scrub_slider.sliderReleased.connect(on_scrub_end)
+        self.scrub_slider.valueChanged.connect(lambda val: on_scrub(val) if self.scrubbing_user else None)
+
+        # --- Timer for updating scrub slider ---
+        self.update_timer = QTimer()
+        self.update_timer.setInterval(50)  # 20 updates per second
+        self.update_timer.timeout.connect(self.update_scrub_slider)
+        self.update_timer.start()
+
+        # Automix controls
+        layout.addWidget(QLabel("Automix"))
+        automix_check = QCheckBox("Enable Automix")
+        layout.addWidget(automix_check)
+        automix_check.stateChanged.connect(lambda s: setattr(self, "automix", s == Qt.CheckState.Checked))
+
+        self.crossfade_label = QLabel(f"Crossfade: {self.crossfade_time:.1f}s")
+        layout.addWidget(self.crossfade_label)
+        crossfade_slider = QSlider(Qt.Orientation.Horizontal)
+        crossfade_slider.setMinimum(0)
+        crossfade_slider.setMaximum(10)
+        crossfade_slider.setValue(int(self.crossfade_time))
+        layout.addWidget(crossfade_slider)
+        crossfade_slider.valueChanged.connect(self.on_crossfade_change)
 
         return widget
+
+
+    # --- Helper method to update scrub position ---
+    def update_scrub_slider(self):
+        if not self.scrubbing_user and self.playing and self.current_index is not None:
+            track = self.songs[self.current_index]
+            if len(track) > 0:
+                progress = np.clip(self.playhead / len(track), 0.0, 1.0)
+                self.scrub_slider.blockSignals(True)
+                self.scrub_slider.setValue(int(progress * 1000))
+                self.scrub_slider.blockSignals(False)
+
+
+    # --- Helper method for crossfade label ---
+    def on_crossfade_change(self, val):
+        self.crossfade_time = float(val)
+        self.crossfade_label.setText(f"Crossfade: {val:.1f}s")
