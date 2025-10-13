@@ -14,12 +14,11 @@ def db_to_linear(db_value: float) -> float:
 class LFO(AudioModule):
     """Sine LFO source module with frequency and amplitude control"""
     def __init__(self, frequency=1.0, amplitude=0.5, sample_rate=44100):
-        super().__init__(has_input=False, has_output=True)
+        super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
         self.phase = 0.0
         self.frequency = frequency
         self.amplitude = amplitude
-        self.output_node = OutputNode(self)
 
     def generate(self, frames: int) -> np.ndarray:
         """Return stereo sine wave LFO"""

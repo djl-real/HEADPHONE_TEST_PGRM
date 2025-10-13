@@ -10,10 +10,9 @@ class Noise(AudioModule):
     """White noise generator module with amplitude control."""
 
     def __init__(self, amplitude=0.5, sample_rate=44100):
-        super().__init__(has_input=False, has_output=True)
+        super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
         self.amplitude = amplitude
-        self.output_node = OutputNode(self)
 
     def generate(self, frames: int) -> np.ndarray:
         """Generate stereo white noise."""

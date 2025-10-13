@@ -12,13 +12,11 @@ class Soundboard(AudioModule):
     """Soundboard generator compatible with modular patch system."""
 
     def __init__(self, available_outputs=None):
-        super().__init__(has_input=False, has_output=True)
+        super().__init__(input_count=0, output_count=1)
         self.fs = 44100
         self.active_sounds = []  # queued playback
         self.sounds = {}          # preloaded sounds
         self.available_outputs = available_outputs or []  # list of AudioModule targets
-
-        self.output_node = getattr(self, "output_node", None) or None
 
         self.load_sounds()
 

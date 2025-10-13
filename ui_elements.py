@@ -268,10 +268,14 @@ class CloseButton(QGraphicsSimpleTextItem):
 
 
 class ModuleItem(QGraphicsRectItem):
-    """A graphics item representing an audio module with dynamic UI and close button."""
+    """A graphics item representing an audio module with dynamic UI and close button.
+    Supports multiple input/output nodes.
+    """
 
     DEFAULT_WIDTH = 180
     DEFAULT_HEIGHT = 100
+
+    NODE_SPACING = 20  # vertical spacing between multiple nodes
 
     def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
@@ -293,13 +297,23 @@ class ModuleItem(QGraphicsRectItem):
 
         # Close button
         self.close_button = CloseButton(self)
-        # nodes will be created conditionally
-        self.input_node = NodeCircle(self, "input") if getattr(module, "input_node", None) else None
-        if self.input_node:
-            self.input_node.setZValue(2)
-        self.output_node = NodeCircle(self, "output") if getattr(module, "output_node", None) else None
-        if self.output_node:
-            self.output_node.setZValue(2)
+
+        # Node circles (support multiple nodes)
+        self.input_nodes: list[NodeCircle] = []
+        for idx, node in enumerate(getattr(module, "input_nodes", [])):
+            nc = NodeCircle(self, "input")
+            nc.setZValue(2)
+            self.input_nodes.append(nc)
+
+        self.output_nodes: list[NodeCircle] = []
+        for idx, node in enumerate(getattr(module, "output_nodes", [])):
+            nc = NodeCircle(self, "output")
+            nc.setZValue(2)
+            self.output_nodes.append(nc)
+
+        # For backward compatibility
+        self.input_node = self.input_nodes[0] if self.input_nodes else None
+        self.output_node = self.output_nodes[0] if self.output_nodes else None
 
         # Embed module UI (if provided) and compute sizing
         self._proxy_widget = None
@@ -307,7 +321,8 @@ class ModuleItem(QGraphicsRectItem):
 
     def get_ui(self):
         """Embed the module's custom QWidget UI and dynamically resize ModuleItem."""
-        # Remove existing proxy if any (rebuild)
+
+        # Remove existing proxy if any
         if self._proxy_widget:
             try:
                 sc = self.scene()
@@ -317,92 +332,77 @@ class ModuleItem(QGraphicsRectItem):
                 pass
             self._proxy_widget = None
 
-        if not hasattr(self.module, "get_ui"):
-            # still set rect to defaults and pos nodes
-            self.setRect(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
-            if self.input_node:
-                self.input_node.setPos(0, self.DEFAULT_HEIGHT / 2)
-            if self.output_node:
-                self.output_node.setPos(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT / 2)
-            self.close_button.setPos(self.DEFAULT_WIDTH - 20, 2)
-            return
+        # Attempt to get module UI
+        ui_widget = None
+        if hasattr(self.module, "get_ui"):
+            try:
+                ui_widget = self.module.get_ui()
+            except Exception:
+                pass
 
-        try:
-            ui_widget = self.module.get_ui()
-        except Exception:
-            ui_widget = None
-
-        if ui_widget is None:
-            # same as above: set defaults
-            self.setRect(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
-            if self.input_node:
-                self.input_node.setPos(0, self.DEFAULT_HEIGHT / 2)
-            if self.output_node:
-                self.output_node.setPos(self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT / 2)
-            self.close_button.setPos(self.DEFAULT_WIDTH - 20, 2)
-            return
-
-        # Ensure widget layout / sizeHint is computed
-        try:
-            ui_widget.adjustSize()
-        except Exception:
-            pass
-
-        # Create proxy and embed
-        proxy = QGraphicsProxyWidget(self)
-        proxy.setWidget(ui_widget)
-        proxy.setZValue(2)
-        # position below title
+        # Default size if no UI
+        width, height = self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT
         label_height = self.label.boundingRect().height()
         padding = 10
-        proxy.setPos(10, label_height + padding)
 
-        # Use proxy bounding rect for actual size
-        proxy_rect = proxy.boundingRect()
-        new_width = max(self.DEFAULT_WIDTH, proxy_rect.width() + 20)
-        new_height = max(self.DEFAULT_HEIGHT, proxy_rect.height() + label_height + 20)
+        if ui_widget:
+            try:
+                ui_widget.adjustSize()
+            except Exception:
+                pass
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(ui_widget)
+            proxy.setZValue(2)
+            proxy.setPos(10, label_height + padding)
+            proxy_rect = proxy.boundingRect()
+            width = max(width, proxy_rect.width() + 20)
+            height = max(height, proxy_rect.height() + label_height + 20)
+            self._proxy_widget = proxy
 
+        # Override with user-defined dimensions
         if self.width_override:
-            new_width = max(new_width, self.width_override)
+            width = max(width, self.width_override)
         if self.height_override:
-            new_height = max(new_height, self.height_override)
+            height = max(height, self.height_override)
 
-        # Apply new rect and reposition nodes + close button
-        self.setRect(0, 0, new_width, new_height)
+        # Apply rect
+        self.setRect(0, 0, width, height)
 
-        if self.input_node:
-            self.input_node.setPos(0, new_height / 2)
-        if self.output_node:
-            self.output_node.setPos(new_width, new_height / 2)
+        # Position input nodes vertically along left
+        if self.input_nodes:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(self.input_nodes) - 1)) / 2
+            for idx, node in enumerate(self.input_nodes):
+                node.setPos(0, start_y + idx * spacing)
 
-        self.close_button.setPos(new_width - 20, 2)
-        self._proxy_widget = proxy
+        # Position output nodes vertically along right
+        if self.output_nodes:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(self.output_nodes) - 1)) / 2
+            for idx, node in enumerate(self.output_nodes):
+                node.setPos(width, start_y + idx * spacing)
+
+        # Move close button to top-right
+        self.close_button.setPos(width - 20, 2)
 
     def cleanup(self):
-        """
-        Safe cleanup invoked by the close button or programmatic removal.
-        Steps:
-         - disconnect any UI connections
-         - call backend destroy/close if present
-         - remove this item from the scene (deferred briefly to allow Qt to finish mouse events)
-        """
-        # 1) disconnect UI connections
-        for node in (self.input_node, self.output_node):
-            if node and node.connection:
+        """Safely clean up the module and remove it from scene."""
+        # Disconnect all node connections
+        for node in self.input_nodes + self.output_nodes:
+            if node.connection:
                 try:
                     node.connection.disconnect()
                 except Exception:
                     pass
                 node.connection = None
-            # also clear temp_connection if any
-            if node and getattr(node, "temp_connection", None):
+            if getattr(node, "temp_connection", None):
                 try:
                     node.temp_connection.disconnect()
                 except Exception:
                     pass
                 node.temp_connection = None
 
-        # 2) backend cleanup if module supports it
+        # Backend cleanup
         try:
             if hasattr(self.module, "destroy"):
                 self.module.destroy()
@@ -411,37 +411,29 @@ class ModuleItem(QGraphicsRectItem):
         except Exception:
             pass
 
-        # 3) remove from scene in a safe, deferred way to avoid mouse-grab race conditions
+        # Remove proxy and rect item from scene safely
         sc = self.scene()
         if sc:
-            # remove proxy widget first if present
-            try:
-                if self._proxy_widget and sc:
-                    sc.removeItem(self._proxy_widget)
-            except Exception:
-                pass
-
-            # schedule the rect item removal on the event loop after a short delay
-            def _remove_item():
+            if self._proxy_widget:
                 try:
-                    if self.scene():
-                        self.scene().removeItem(self)
+                    sc.removeItem(self._proxy_widget)
                 except Exception:
                     pass
+            QTimer.singleShot(1, lambda: sc.removeItem(self) if self.scene() else None)
 
-            QTimer.singleShot(1, _remove_item)
-
-        # 4) break references to help GC
+        # Break references
         self.module = None
+        self.input_nodes = []
+        self.output_nodes = []
         self.input_node = None
         self.output_node = None
         self._proxy_widget = None
 
     def itemChange(self, change, value):
-        # Called when this item moves — update any connected paths
+        # Update connected paths when module moves
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            for node in (self.input_node, self.output_node):
-                if node and getattr(node, "connection", None):
+            for node in self.input_nodes + self.output_nodes:
+                if getattr(node, "connection", None):
                     try:
                         node.connection.update_path()
                     except Exception:

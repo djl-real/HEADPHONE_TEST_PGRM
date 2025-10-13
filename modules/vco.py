@@ -1,25 +1,23 @@
-# modules/vco.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, QButtonGroup, QRadioButton
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 from nodes import OutputNode
 
-
 class VCO(AudioModule):
     """Voltage Controlled Oscillator with selectable waveform and smooth pitch control."""
 
     def __init__(self, frequency=440.0, amplitude=0.5, sample_rate=44100):
-        super().__init__(has_input=False, has_output=True)
+        # Use input_count=0, output_count=1 for the new multi-node system
+        super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
         self.phase = 0.0
         self.frequency = frequency
         self.target_frequency = frequency  # for smoothing pitch changes
         self.amplitude = amplitude
         self.wave_type = "Sine"
-        self.output_node = OutputNode(self)
 
-        # smoothing parameters
+        # Smoothing parameters
         self.freq_smooth_factor = 0.02  # smaller = smoother, adjust for responsiveness
 
     def generate(self, frames: int) -> np.ndarray:
@@ -31,7 +29,7 @@ class VCO(AudioModule):
         phases = (self.phase + np.arange(frames) * phase_inc) % 1.0
         self.phase = (self.phase + frames * phase_inc) % 1.0
 
-        # Generate waveform based on type
+        # Generate waveform
         if self.wave_type == "Sine":
             wave = np.sin(2 * np.pi * phases)
         elif self.wave_type == "Triangle":
@@ -52,7 +50,7 @@ class VCO(AudioModule):
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        # --- Pitch slider (logarithmic) ---
+        # --- Pitch slider ---
         pitch_label = QLabel(f"Pitch: {self.frequency:.1f} Hz")
         layout.addWidget(pitch_label)
 
@@ -62,8 +60,6 @@ class VCO(AudioModule):
         min_freq, max_freq = 20.0, 20000.0
         slider_val = int(100 * np.log(self.frequency / min_freq) / np.log(max_freq / min_freq))
         pitch_slider.setValue(slider_val)
-        pitch_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        pitch_slider.setTickInterval(10)
         layout.addWidget(pitch_slider)
 
         def on_pitch_change(val):
@@ -72,7 +68,7 @@ class VCO(AudioModule):
 
         pitch_slider.valueChanged.connect(on_pitch_change)
 
-        # --- Waveform selector using four radio buttons ---
+        # --- Waveform selector ---
         waveform_label = QLabel(f"Waveform: {self.wave_type}")
         layout.addWidget(waveform_label)
 
@@ -84,7 +80,6 @@ class VCO(AudioModule):
                 btn.setChecked(True)
             waveform_group.addButton(btn)
             waveform_layout.addWidget(btn)
-
         layout.addLayout(waveform_layout)
 
         def on_waveform_change():
@@ -95,16 +90,14 @@ class VCO(AudioModule):
 
         waveform_group.buttonClicked.connect(on_waveform_change)
 
-        # --- Smooth factor slider ---
+        # --- Frequency smoothing ---
         smooth_label = QLabel(f"Freq Smooth: {self.freq_smooth_factor:.3f}")
         layout.addWidget(smooth_label)
 
         smooth_slider = QSlider(Qt.Orientation.Horizontal)
         smooth_slider.setMinimum(0)
-        smooth_slider.setMaximum(200)  # maps to 0..0.1
+        smooth_slider.setMaximum(200)  # maps to 0..0.2
         smooth_slider.setValue(int(self.freq_smooth_factor * 1000))
-        smooth_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        smooth_slider.setTickInterval(5)
         layout.addWidget(smooth_slider)
 
         def on_smooth_change(val):
@@ -113,8 +106,6 @@ class VCO(AudioModule):
 
         smooth_slider.valueChanged.connect(on_smooth_change)
 
-        # --- Optional widget sizing hint ---
         widget.setMinimumWidth(240)
         widget.setMinimumHeight(140)
-
         return widget

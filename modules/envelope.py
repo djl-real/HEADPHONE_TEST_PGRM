@@ -10,7 +10,7 @@ class EnvelopeGenerator(AudioModule):
     """ADSR envelope generator module."""
 
     def __init__(self, sample_rate=44100):
-        super().__init__(has_input=True, has_output=True)
+        super().__init__(input_count=1, output_count=1)
         self.sample_rate = sample_rate
 
         # ADSR parameters (seconds / linear)
@@ -24,8 +24,6 @@ class EnvelopeGenerator(AudioModule):
         self.level = 0.0
         self.time = 0
         self.note_on = False
-
-        self.output_node = OutputNode(self)
 
     def trigger(self):
         """Start the envelope (key pressed)."""

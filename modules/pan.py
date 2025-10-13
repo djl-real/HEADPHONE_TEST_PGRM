@@ -9,9 +9,7 @@ class Pan(AudioModule):
     """Simple stereo panning module."""
 
     def __init__(self, pan=0.0):
-        super().__init__(has_input=True, has_output=True)
-        self.input_node = InputNode(self)
-        self.output_node = OutputNode(self)
+        super().__init__(input_count=1, output_count=1)
         self.pan = pan  # -1.0 (full left) to 1.0 (full right)
 
     def generate(self, frames: int) -> np.ndarray:

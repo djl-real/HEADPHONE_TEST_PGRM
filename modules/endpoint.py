@@ -13,7 +13,7 @@ def db_to_linear(db_value: float) -> float:
 class EndpointModule(AudioModule):
     """Final output module with vertical DJ-style volume fader"""
     def __init__(self, volume_db=-80.0):
-        super().__init__(has_input=True, has_output=False)
+        super().__init__(input_count=1, output_count=0)
         self.volume_db = volume_db  # default silent
         self.muted = False  # optional mute flag if needed
 

@@ -10,14 +10,13 @@ class Bandpass(AudioModule):
     """Simple one-pole bandpass filter with adjustable low and high cutoff frequencies."""
 
     def __init__(self, sample_rate=44100, lp_freq=20000.0, hp_freq=20.0):
-        super().__init__(has_input=True, has_output=True)
+        super().__init__(input_count=1, output_count=1)
         self.sample_rate = sample_rate
         self.lp_freq = lp_freq
         self.hp_freq = hp_freq
         self.prev_x = np.zeros(2)  # previous input for HP
         self.prev_hp = np.zeros(2) # previous HP output
         self.prev_lp = np.zeros(2) # previous LP output
-        self.output_node = OutputNode(self)
 
     def generate(self, frames: int) -> np.ndarray:
         if self.input_node is None:

@@ -16,9 +16,8 @@ class Music(AudioModule):
     """Music player module with playlist, scrubbing, reverse, and automix support."""
 
     def __init__(self, sample_rate=44100):
-        super().__init__(has_input=False, has_output=True)
+        super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
-        self.output_node = OutputNode(self)
 
         # Playback state
         self.playing = False
