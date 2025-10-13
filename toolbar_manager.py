@@ -4,6 +4,7 @@ from PyQt6.QtGui import QAction
 from modules.bandpass import Bandpass
 from modules.endpoint import EndpointModule
 from modules.LFO import LFO
+from modules.vco import VCO
 from audio_module import AudioModule
 from ui_elements import ModuleItem
 
@@ -25,6 +26,7 @@ class ToolbarManager:
         # Map module names to constructors
         self.module_classes = {
             "LFO": LFO,
+            "VCO": VCO,
             "Bandpass": Bandpass,
             "Endpoint": EndpointModule,
         }

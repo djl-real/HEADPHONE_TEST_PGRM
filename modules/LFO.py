@@ -1,7 +1,7 @@
 # modules/lfo.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from audio_module import AudioModule
 from nodes import OutputNode
 
@@ -37,8 +37,7 @@ class LFO(AudioModule):
     def get_ui(self) -> QWidget:
         """Return a QWidget for controlling frequency and amplitude"""
         widget = QWidget()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
+        layout = QVBoxLayout(widget)
 
         # Frequency slider
         freq_label = QLabel(f"Frequency: {self.frequency:.2f} Hz")
@@ -51,12 +50,9 @@ class LFO(AudioModule):
         freq_slider.setTickInterval(1)
         layout.addWidget(freq_slider)
 
-        def on_freq_change(val):
-            self.frequency = val
-            freq_label.setText(f"Frequency: {self.frequency:.2f} Hz")
-        freq_slider.valueChanged.connect(on_freq_change)
+        freq_slider.valueChanged.connect(lambda val: freq_label.setText(f"Frequency: {val:.2f} Hz") or setattr(self, "frequency", val))
 
-        # Amplitude slider (0 to 1)
+        # Amplitude slider
         amp_label = QLabel(f"Amplitude: {self.amplitude:.2f}")
         layout.addWidget(amp_label)
         amp_slider = QSlider(Qt.Orientation.Horizontal)
@@ -67,9 +63,10 @@ class LFO(AudioModule):
         amp_slider.setTickInterval(10)
         layout.addWidget(amp_slider)
 
-        def on_amp_change(val):
-            self.amplitude = val / 100.0
-            amp_label.setText(f"Amplitude: {self.amplitude:.2f}")
-        amp_slider.valueChanged.connect(on_amp_change)
+        amp_slider.valueChanged.connect(lambda val: amp_label.setText(f"Amplitude: {val/100:.2f}") or setattr(self, "amplitude", val/100))
 
         return widget
+
+    def sizeHint(self):
+        """Return custom width/height for the fader."""
+        return QSize(500, 250)  # width x height

@@ -109,14 +109,18 @@ class NodeCircle(QGraphicsEllipseItem):
         self.setBrush(QBrush(color))
         super().hoverLeaveEvent(event)
 
-
 class ModuleItem(QGraphicsRectItem):
-    WIDTH = 180
-    HEIGHT = 100
+    """A graphics item representing an audio module with dynamic UI."""
 
-    def __init__(self, module: AudioModule):
-        super().__init__(0, 0, self.WIDTH, self.HEIGHT)
+    DEFAULT_WIDTH = 180
+    DEFAULT_HEIGHT = 100
+
+    def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
+        super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         self.module = module
+        self.width_override = width_override
+        self.height_override = height_override
+
         self.setBrush(QBrush(QColor(40, 40, 40)))
         self.setPen(QPen(QColor(120, 120, 120)))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
@@ -130,40 +134,56 @@ class ModuleItem(QGraphicsRectItem):
 
         # Input / output nodes
         self.input_node = NodeCircle(self, "input") if getattr(module, "input_node", None) else None
-        if self.input_node:
-            self.input_node.setPos(0, self.HEIGHT / 2)
-            self.input_node.setZValue(2)
-
         self.output_node = NodeCircle(self, "output") if getattr(module, "output_node", None) else None
-        if self.output_node:
-            self.output_node.setPos(self.WIDTH, self.HEIGHT / 2)
-            self.output_node.setZValue(2)
 
-        # Add module-specific UI if available
+        # Embed UI and resize
         self.get_ui()
 
     def get_ui(self):
-        """
-        Checks if the module has a custom QWidget UI (via AudioModule.get_ui)
-        and embeds it inside this ModuleItem using QGraphicsProxyWidget.
-        """
-        ui_widget = None
-        if hasattr(self.module, "get_ui"):
-            ui_widget = self.module.get_ui()
+        """Embed the module's custom QWidget UI and resize the ModuleItem dynamically using proxy.boundingRect()."""
+        if not hasattr(self.module, "get_ui"):
+            return
 
-        if ui_widget is not None:
-            # Embed in QGraphicsScene
-            proxy = QGraphicsProxyWidget(self)
-            proxy.setWidget(ui_widget)
-            proxy.setPos(10, 25)  # position below the label
-            proxy.setZValue(2)
-            # Optional: resize ModuleItem to fit the UI if needed
-            # self.setRect(0, 0, max(self.WIDTH, ui_widget.width() + 20),
-            #              self.HEIGHT + ui_widget.height() + 10)
+        ui_widget = self.module.get_ui()
+        if ui_widget is None:
+            return
+
+        # Ensure layout is calculated
+        ui_widget.adjustSize()
+
+        # Embed in QGraphicsScene via QGraphicsProxyWidget
+        proxy = QGraphicsProxyWidget(self)
+        proxy.setWidget(ui_widget)
+        proxy.setZValue(2)
+
+        # Position below the title
+        label_height = self.label.boundingRect().height()
+        padding = 10
+        proxy.setPos(10, label_height + padding)
+
+        # Use proxy's actual boundingRect for width/height
+        proxy_rect = proxy.boundingRect()
+        new_width = max(self.DEFAULT_WIDTH, proxy_rect.width() + 20)
+        new_height = max(self.DEFAULT_HEIGHT, proxy_rect.height() + label_height + 20)
+
+        # Apply width/height overrides if provided
+        if self.width_override:
+            new_width = max(new_width, self.width_override)
+        if self.height_override:
+            new_height = max(new_height, self.height_override)
+
+        # Resize ModuleItem
+        self.setRect(0, 0, new_width, new_height)
+
+        # Reposition nodes vertically centered
+        if self.input_node:
+            self.input_node.setPos(0, new_height / 2)
+        if self.output_node:
+            self.output_node.setPos(new_width, new_height / 2)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            # Update the connection paths for input/output nodes
+            # Update connection paths
             for node in [self.input_node, self.output_node]:
                 if node and node.connection:
                     node.connection.update_path()

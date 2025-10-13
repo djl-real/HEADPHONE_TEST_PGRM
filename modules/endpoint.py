@@ -1,7 +1,7 @@
 # modules/endpoint.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from audio_module import AudioModule
 
 DB_MIN = -80.0   # represent -inf dB
@@ -71,3 +71,7 @@ class EndpointModule(AudioModule):
         slider.valueChanged.connect(on_value_change)
 
         return widget
+    
+    def sizeHint(self):
+        """Return custom width/height for the fader."""
+        return QSize(200, 250)  # width x height
