@@ -4,10 +4,10 @@ import time
 import numpy as np
 import sounddevice as sd
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QPinchGesture
+    QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QPinchGesture, QGraphicsItem
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QWheelEvent, QPainter, QPen
+    QBrush, QColor, QWheelEvent, QPainter, QPen, QTouchEvent
 )
 from PyQt6.QtCore import Qt, QPointF, QEvent, QTimer
 
@@ -27,6 +27,9 @@ class WorkspaceScene(QGraphicsScene):
         self.grid_size = 25
         self.grid_color = QColor(50, 50, 50)
         self.grid_line_width = 1
+        
+        # Set an initial "infinite-ish" scene rect so scrolling works from the start
+        self.setSceneRect(-100000, -100000, 200000, 200000)
 
     def drawBackground(self, painter, rect):
         # Fill background
@@ -53,53 +56,43 @@ class WorkspaceScene(QGraphicsScene):
 
 
 class WorkspaceView(QGraphicsView):
-    """Custom view with zoom/pan and touchscreen gesture support (pinch + momentum)."""
+    """Custom QGraphicsView with zoom, pan, pinch gesture, and touch scrolling with inertia."""
 
-    # inertia parameters
     INERTIA_FPS = 60
-    INERTIA_DECAY = 0.93  # multiply velocity by this each tick
-    INERTIA_MIN_VEL = 0.5  # pixels per tick below which inertia stops
+    INERTIA_DECAY = 0.93
+    INERTIA_MIN_VEL = 0.5
 
     def __init__(self, scene):
         super().__init__(scene)
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # do not draw an additional background brush here; scene handles it
         self.setBackgroundBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
-
-        # mouse panning
         self.zoom_factor = 1.15
+
+        # Mouse panning
         self.last_mouse_pos = None
         self.panning = False
 
-        # touch support & gestures
+        # Touch support
         self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
         self.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
-        # request pinch gesture
         self.grabGesture(Qt.GestureType.PinchGesture)
-        # make sure we get gesture events
         self.setInteractive(True)
-
-        # transformation anchor default (we'll override when needed)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
 
-        # touch panning state for 1-finger drag
+        # Touch scrolling state
         self.touch_last_pos: QPointF | None = None
-        # velocity tracking for inertia (pixels per second)
-        self._last_move_time = None
-        self._last_move_pos = None
+        self._last_move_pos: QPointF | None = None
+        self._last_move_time: float | None = None
         self._vel_x = 0.0
         self._vel_y = 0.0
         self._inertia_timer: QTimer | None = None
 
-    # ---------- Mouse-based zoom ----------
+    # ---------- Mouse ----------
     def wheelEvent(self, event: QWheelEvent):
-        # zoom centered on mouse cursor (AnchorUnderMouse does that)
         zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
         self.scale(zoom, zoom)
 
-    # ---------- Mouse-based panning ----------
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.MiddleButton or (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
             self.panning = True
@@ -112,7 +105,6 @@ class WorkspaceView(QGraphicsView):
         if self.panning and self.last_mouse_pos:
             delta = event.pos() - self.last_mouse_pos
             self.last_mouse_pos = event.pos()
-            # integer scroll bar values required
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta.x()))
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta.y()))
         else:
@@ -125,107 +117,96 @@ class WorkspaceView(QGraphicsView):
         else:
             super().mouseReleaseEvent(event)
 
-    # ---------- Touch & Gesture Handling ----------
-    def event(self, event):
-        """Handle touch and gesture events (Gesture, TouchBegin/Update/End)."""
-        et = event.type()
-        if et == QEvent.Type.Gesture:
-            # route to pinch handler
-            return self.gestureEvent(event)
-        elif et == QEvent.Type.TouchBegin:
-            pts = event.touchPoints()
-            if pts:
-                self.touch_last_pos = pts[0].position()
-                self._last_move_pos = QPointF(self.touch_last_pos)
+    # ---------- Touch ----------
+    def viewportEvent(self, event):
+        """Intercept touch events at the viewport level."""
+        if event.type() in (QEvent.Type.TouchBegin, QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
+            return self.handleTouchEvent(event)
+        return super().viewportEvent(event)
+
+    def handleTouchEvent(self, event):
+        touch_points = event.points()
+        if not touch_points:
+            return super().event(event)
+
+        tp = touch_points[0]
+        pos = tp.position()
+        scene_pos = self.mapToScene(pos.toPoint())
+
+        # Optionally disable scrolling over movable items
+        item = self.scene().itemAt(scene_pos, self.transform())
+        movable = False  # always scroll regardless of item
+
+        if event.type() == QEvent.Type.TouchBegin:
+            if not movable:
+                self.touch_last_pos = pos
+                self._last_move_pos = QPointF(pos)
                 self._last_move_time = time.time()
-                # stop any running inertia
                 self._stop_inertia()
             event.accept()
             return True
-        elif et == QEvent.Type.TouchUpdate:
-            pts = event.touchPoints()
-            if len(pts) == 1:
-                # one-finger pan
-                tp = pts[0]
-                pos = tp.position()
-                if self.touch_last_pos is not None:
-                    delta = pos - self.touch_last_pos
-                    # integer scroll update
-                    self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta.x()))
-                    self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta.y()))
 
-                    # update velocity estimate (pixels/sec)
-                    now = time.time()
-                    dt = max(1e-6, now - (self._last_move_time or now))
-                    vx = (pos.x() - (self._last_move_pos.x() if self._last_move_pos is not None else pos.x())) / dt
-                    vy = (pos.y() - (self._last_move_pos.y() if self._last_move_pos is not None else pos.y())) / dt
-                    # low-pass blend velocities for stability
-                    self._vel_x = (self._vel_x * 0.7) + (vx * 0.3)
-                    self._vel_y = (self._vel_y * 0.7) + (vy * 0.3)
-                    self._last_move_pos = QPointF(pos)
-                    self._last_move_time = now
+        elif event.type() == QEvent.Type.TouchUpdate:
+            if not movable and self.touch_last_pos is not None:
+                delta = pos - self.touch_last_pos
+                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta.x()))
+                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta.y()))
 
+                # velocity update
+                now = time.time()
+                dt = max(1e-6, now - (self._last_move_time or now))
+                vx = (pos.x() - (self._last_move_pos.x() if self._last_move_pos else pos.x())) / dt
+                vy = (pos.y() - (self._last_move_pos.y() if self._last_move_pos else pos.y())) / dt
+                self._vel_x = (self._vel_x * 0.7) + (vx * 0.3)
+                self._vel_y = (self._vel_y * 0.7) + (vy * 0.3)
+                self._last_move_pos = QPointF(pos)
+                self._last_move_time = now
                 self.touch_last_pos = pos
-            event.accept()
-            return True
-        elif et == QEvent.Type.TouchEnd:
-            # start inertia if velocity large enough
-            if (abs(self._vel_x) > 50) or (abs(self._vel_y) > 50):
-                self._start_inertia()
-            self.touch_last_pos = None
-            event.accept()
-            return True
+
+                event.accept()
+                return True
+
+        elif event.type() == QEvent.Type.TouchEnd:
+            if not movable:
+                if abs(self._vel_x) > 50 or abs(self._vel_y) > 50:
+                    self._start_inertia()
+                self.touch_last_pos = None
+                event.accept()
+                return True
 
         return super().event(event)
 
+    # ---------- Gesture ----------
+    def event(self, event):
+        if event.type() == QEvent.Type.Gesture:
+            return self.gestureEvent(event)
+        return super().event(event)
+
     def gestureEvent(self, event):
-        """Handle pinch gesture for zooming centered on the gesture focal point."""
-        # note: event.gesture() returns a QGesture instance; we only asked for pinch
         pinch = event.gesture(Qt.GestureType.PinchGesture)
         if pinch and isinstance(pinch, QPinchGesture):
-            change_flags = pinch.changeFlags()
-
-            # Retrieve the center (in viewport coordinates). It may return a QPointF.
-            center_pt = pinch.centerPoint()  # QPointF in viewport coordinates
-
-            # Convert center to scene coordinates BEFORE scaling
+            center_pt = pinch.centerPoint()
             if center_pt is None:
                 return False
-
-            # Because we will manually keep the scene point under the same viewport coordinate,
-            # set transformation anchor to NoAnchor temporarily to perform manual centering.
             old_anchor = self.transformationAnchor()
             self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
-
-            # map viewport center to scene before scaling
             vp_center = QPointF(center_pt)
             scene_before = self.mapToScene(vp_center.toPoint())
-
-            # If scale factor changed, apply scale around the viewport point
-            if change_flags & QPinchGesture.ChangeFlag.ScaleFactorChanged:
+            if pinch.changeFlags() & QPinchGesture.ChangeFlag.ScaleFactorChanged:
                 scale = pinch.scaleFactor()
-                # prevent extremely large/small zooms
                 if scale > 0:
                     self.scale(scale, scale)
-
-            # After scaling, map the same viewport point to scene -> compute shift and pan to keep focal point stable
             scene_after = self.mapToScene(vp_center.toPoint())
             shift = scene_after - scene_before
-            # Move view so that scene_after maps back to the same viewport position
-            # convert scene shift to scrollbar adjustments (in pixels)
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() + int(shift.x()))
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() + int(shift.y()))
-
-            # Restore transformation anchor
             self.setTransformationAnchor(old_anchor)
-
             event.accept()
             return True
         return False
 
-    # ---------- Inertia / momentum ----------
+    # ---------- Inertia ----------
     def _start_inertia(self):
-        # stop any existing timer first
         self._stop_inertia()
         self._inertia_timer = QTimer(self)
         interval_ms = int(1000 / self.INERTIA_FPS)
@@ -241,24 +222,21 @@ class WorkspaceView(QGraphicsView):
             except Exception:
                 pass
             self._inertia_timer = None
-        # reset velocity
         self._vel_x = 0.0
         self._vel_y = 0.0
 
     def _inertia_step(self):
-        # apply velocity (pixels/sec) scaled by frame dt to scrollbars
         dt = 1.0 / max(1, self.INERTIA_FPS)
         dx = self._vel_x * dt
         dy = self._vel_y * dt
-        # apply integer scroll amounts
         self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(dx))
         self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(dy))
-        # decay velocities
         self._vel_x *= self.INERTIA_DECAY
         self._vel_y *= self.INERTIA_DECAY
-        # stop condition when velocities are small
-        if (abs(self._vel_x) < self.INERTIA_MIN_VEL and abs(self._vel_y) < self.INERTIA_MIN_VEL):
+        if abs(self._vel_x) < self.INERTIA_MIN_VEL and abs(self._vel_y) < self.INERTIA_MIN_VEL:
             self._stop_inertia()
+
+
 
 
 class MainWindow(QMainWindow):
