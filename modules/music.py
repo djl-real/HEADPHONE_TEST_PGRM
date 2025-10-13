@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QSlider, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont
 from audio_module import AudioModule
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
@@ -26,8 +27,6 @@ class Music(AudioModule):
         self.play_buffer = np.zeros((0, 2), dtype=np.float32)
         self.playhead = 0.0
         self.pitch = 1.0
-        self.pan = 0.0
-        self.volume = -6.0
         self.reverse = False
         self.hold_active = False
 
@@ -36,7 +35,7 @@ class Music(AudioModule):
         self.hold_buffer = [np.zeros((512, 2), dtype=np.float32) for _ in range(MAX_BLOCK_HOLD)]
         self.hold_pointer = 0
 
-        # Scrub user flag
+        # Scrub flag
         self.scrubbing_user = False
 
         # Data
@@ -44,7 +43,7 @@ class Music(AudioModule):
         self.song_names = []
         self.load_playlist()
 
-    # --- Playlist Management ---
+    # --- Playlist ---
     def load_playlist(self):
         playlist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlist"))
         os.makedirs(playlist_dir, exist_ok=True)
@@ -69,7 +68,7 @@ class Music(AudioModule):
                 except Exception as e:
                     print(f"[Music] Failed to load {fname}: {e}")
 
-    # --- Playback Logic ---
+    # --- Playback ---
     def toggle_play(self, index: int):
         if self.current_index == index:
             self.playing = not self.playing
@@ -92,11 +91,11 @@ class Music(AudioModule):
         if self.current_index is None or self.current_index >= len(self.songs):
             return out
 
+        # Hold mode
         if self.hold_active:
-            # Replay last block_hold blocks
             for i in range(frames):
-                sample_idx = i % self.hold_buffer[0].shape[0]
-                out[i] = self.hold_buffer[self.hold_pointer][sample_idx]
+                idx = i % self.hold_buffer[0].shape[0]
+                out[i] = self.hold_buffer[self.hold_pointer][idx]
             self.hold_pointer = (self.hold_pointer + 1) % self.block_hold
             return out.astype(np.float32)
 
@@ -113,18 +112,10 @@ class Music(AudioModule):
                 break
             next_idx = idx + (1 if not self.reverse else -1)
             frac = abs(self.playhead - idx)
-            sample = (1 - frac) * track[idx] + frac * track[next_idx]
-            block[i] = sample
+            block[i] = (1 - frac) * track[idx] + frac * track[next_idx]
             self.playhead += self.pitch * (-1 if self.reverse else 1)
 
-        # Apply volume and pan
-        gain = 10 ** (self.volume / 20.0)
-        left_gain = gain * (1 - max(0, self.pan))
-        right_gain = gain * (1 - max(0, -self.pan))
-        block[:, 0] *= left_gain
-        block[:, 1] *= right_gain
-
-        # Add block to hold buffer, cycling pointer
+        # Add block to hold buffer
         self.hold_buffer[self.hold_pointer % MAX_BLOCK_HOLD] = block.copy()
         self.hold_pointer = (self.hold_pointer + 1) % MAX_BLOCK_HOLD
 
@@ -157,17 +148,39 @@ class Music(AudioModule):
         stop_btn.clicked.connect(self.stop_playback)
         reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
 
-        # Pitch slider
+        # Pitch slider with logarithmic mapping
         layout.addWidget(QLabel("Pitch"))
-        pitch_slider = QSlider(Qt.Orientation.Horizontal)
-        pitch_slider.setMinimum(50)
-        pitch_slider.setMaximum(200)
-        pitch_slider.setValue(int(self.pitch * 100))
-        layout.addWidget(pitch_slider)
-        pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", val / 100.0))
 
-        # Scrub slider
-        layout.addWidget(QLabel("Scrub"))
+        pitch_slider = QSlider(Qt.Orientation.Horizontal)
+        pitch_slider.setMinimum(0)
+        pitch_slider.setMaximum(100)
+
+        def slider_to_pitch(val):
+            s = val / 100.0
+            return 0.5 * (4 ** s)
+
+        def pitch_to_slider(pitch):
+            s = np.log2(pitch / 0.5) / 2
+            return int(s * 100)
+
+        pitch_slider.setValue(pitch_to_slider(self.pitch))
+        pitch_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        pitch_slider.setTickInterval(25)
+        layout.addWidget(pitch_slider)
+        pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
+
+        # Tick labels for pitch
+        tick_layout = QHBoxLayout()
+        for lbl in ["0.5", "", "", "", "1.0", "", "", "", "2.0"]:
+            tick_label = QLabel(lbl)
+            tick_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            tick_layout.addWidget(tick_label)
+        layout.addLayout(tick_layout)
+
+        # Scrub slider with live countdown label
+        self.scrub_label = QLabel("Remaining: 00:00")
+        layout.addWidget(self.scrub_label)
+
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
@@ -188,13 +201,12 @@ class Music(AudioModule):
         self.scrub_slider.sliderReleased.connect(on_scrub_end)
         self.scrub_slider.valueChanged.connect(on_scrub)
 
-        # Hold slider + button
+        # Hold controls
         hold_layout = QHBoxLayout()
         self.hold_slider = QSlider(Qt.Orientation.Vertical)
         self.hold_slider.setMinimum(0)
         self.hold_slider.setMaximum(MAX_BLOCK_HOLD)
         self.hold_slider.setValue(self.block_hold)
-        self.hold_slider.setToolTip("Number of blocks to hold")
         hold_layout.addWidget(self.hold_slider)
 
         self.hold_button = QPushButton("Hold")
@@ -212,19 +224,38 @@ class Music(AudioModule):
             }
         """)
         hold_layout.addWidget(self.hold_button)
-
         layout.addLayout(hold_layout)
 
         self.hold_slider.valueChanged.connect(lambda val: setattr(self, "block_hold", val))
         self.hold_button.toggled.connect(lambda state: setattr(self, "hold_active", state))
 
-        # Timer for scrub slider
+        # Timer updates scrub slider and countdown
         self.update_timer = QTimer(widget)
         self.update_timer.setInterval(50)
-        self.update_timer.timeout.connect(self.update_scrub_slider)
+
+        def update_scrub_and_countdown():
+            if not self.scrubbing_user and self.playing and self.current_index is not None:
+                track = self.songs[self.current_index]
+                if len(track) > 0:
+                    # Update scrub slider
+                    progress = min(max(self.playhead / len(track), 0.0), 1.0)
+                    self.scrub_slider.blockSignals(True)
+                    self.scrub_slider.setValue(int(progress * 1000))
+                    self.scrub_slider.blockSignals(False)
+
+                    # Update remaining time label
+                    remaining_samples = len(track) - int(self.playhead)
+                    remaining_seconds = remaining_samples / self.sample_rate
+                    mins = int(remaining_seconds // 60)
+                    secs = int(remaining_seconds % 60)
+                    self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}")
+
+        self.update_timer.timeout.connect(update_scrub_and_countdown)
         self.update_timer.start()
 
         return widget
+
+
 
     def update_playhead_from_scrub(self, val):
         if self.current_index is not None and 0 <= self.current_index < len(self.songs):
