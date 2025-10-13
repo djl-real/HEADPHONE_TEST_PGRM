@@ -7,7 +7,8 @@ from audio_module import AudioModule
 
 
 class ConnectionPath(QGraphicsPathItem):
-    """Draws a curved line between two node circles."""
+    """Draws a curved line between two node circles and manages disconnection."""
+
     def __init__(self, start_node, end_node=None, scene=None):
         super().__init__()
         self.start_node = start_node
@@ -16,7 +17,7 @@ class ConnectionPath(QGraphicsPathItem):
         self.setZValue(-1)
         self.setPen(QPen(QColor(180, 180, 180), 3))
 
-        if scene is not None:
+        if scene:
             scene.addItem(self)
 
         # Set node references
@@ -42,6 +43,28 @@ class ConnectionPath(QGraphicsPathItem):
         path.cubicTo(start + QPointF(dx, 0), end_pos - QPointF(dx, 0), end_pos)
         self.setPath(path)
 
+    def disconnect(self):
+        """Sever the connection, both visually and in the audio backend."""
+        start_node = getattr(self, "start_node", None)
+        end_node = getattr(self, "end_node", None)
+
+        # Disconnect backend audio nodes
+        if start_node and start_node.audio_module and getattr(start_node.audio_module, "output_node", None):
+            start_node.audio_module.output_node.disconnect()
+
+        # Remove visual references
+        if start_node:
+            start_node.connection = None
+        if end_node:
+            end_node.connection = None
+
+        # Remove from scene
+        if self.scene():
+            self.scene().removeItem(self)
+
+        self.start_node = None
+        self.end_node = None
+
 
 class NodeCircle(QGraphicsEllipseItem):
     RADIUS = 10
@@ -66,28 +89,9 @@ class NodeCircle(QGraphicsEllipseItem):
         self.temp_connection: ConnectionPath | None = None
 
     def mousePressEvent(self, event):
-        # Remove existing connection if present
+        # Disconnect existing connection if present
         if self.connection:
-            # Safely disconnect backend audio nodes
-            if self.node_type == "output":
-                if self.audio_module and self.connection.end_node and self.connection.end_node.audio_module:
-                    try:
-                        self.audio_module.output_node.disconnect(self.connection.end_node.audio_module.input_node)
-                    except AttributeError:
-                        pass  # ignore if disconnect is not implemented
-            elif self.node_type == "input":
-                if self.audio_module and self.connection.start_node and self.connection.start_node.audio_module:
-                    try:
-                        self.connection.start_node.audio_module.output_node.disconnect(self.audio_module.input_node)
-                    except AttributeError:
-                        pass
-
-            # Remove visual connection
-            if self.connection.start_node:
-                self.connection.start_node.connection = None
-            if self.connection.end_node:
-                self.connection.end_node.connection = None
-            self.scene().removeItem(self.connection)
+            self.connection.disconnect()
             self.connection = None
 
         # Start a new connection if this is an output node
@@ -114,13 +118,14 @@ class NodeCircle(QGraphicsEllipseItem):
                     if getattr(self.audio_module, "output_node", None):
                         self.audio_module.output_node.connect(target_input.audio_module.input_node)
 
-                # Finalize connection path
+                # Finalize connection
                 self.temp_connection.end_node = target_input
                 self.connection = self.temp_connection
                 target_input.connection = self.temp_connection
                 self.temp_connection.update_path()
             else:
-                self.scene().removeItem(self.temp_connection)
+                # Dragged to nothing
+                self.temp_connection.disconnect()
 
             self.temp_connection = None
 
@@ -134,6 +139,7 @@ class NodeCircle(QGraphicsEllipseItem):
         color = QColor(150, 80, 200) if self.node_type == "output" else QColor(80, 150, 200)
         self.setBrush(QBrush(color))
         super().hoverLeaveEvent(event)
+
 
 class ModuleItem(QGraphicsRectItem):
     """A graphics item representing an audio module with dynamic UI."""
@@ -175,34 +181,27 @@ class ModuleItem(QGraphicsRectItem):
         if ui_widget is None:
             return
 
-        # Ensure layout calculations are updated
         ui_widget.adjustSize()
 
-        # Embed using QGraphicsProxyWidget
         proxy = QGraphicsProxyWidget(self)
         proxy.setWidget(ui_widget)
         proxy.setZValue(2)
 
-        # Position below the title
         label_height = self.label.boundingRect().height()
         padding = 10
         proxy.setPos(10, label_height + padding)
 
-        # Use proxy.boundingRect for accurate size
         proxy_rect = proxy.boundingRect()
         new_width = max(self.DEFAULT_WIDTH, proxy_rect.width() + 20)
         new_height = max(self.DEFAULT_HEIGHT, proxy_rect.height() + label_height + 20)
 
-        # Apply manual overrides
         if self.width_override:
             new_width = max(new_width, self.width_override)
         if self.height_override:
             new_height = max(new_height, self.height_override)
 
-        # Set ModuleItem rect
         self.setRect(0, 0, new_width, new_height)
 
-        # Reposition input/output nodes vertically centered
         if self.input_node:
             self.input_node.setPos(0, new_height / 2)
         if self.output_node:
@@ -210,7 +209,6 @@ class ModuleItem(QGraphicsRectItem):
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
-            # Update connection paths
             for node in [self.input_node, self.output_node]:
                 if node and node.connection:
                     node.connection.update_path()

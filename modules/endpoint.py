@@ -72,6 +72,6 @@ class EndpointModule(AudioModule):
 
         return widget
     
-    def sizeHint(self):
-        """Return custom width/height for the fader."""
-        return QSize(200, 250)  # width x height
+    # def sizeHint(self):
+    #     """Return custom width/height for the fader."""
+    #     return QSize(200, 250)  # width x height
