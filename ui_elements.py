@@ -65,10 +65,36 @@ class NodeCircle(QGraphicsEllipseItem):
 
         self.temp_connection: ConnectionPath | None = None
 
-    def mousePressEvent(self, event):
+def mousePressEvent(self, event):
+    # Remove existing connection if present
+    if self.connection:
+        # Safely disconnect backend audio nodes
         if self.node_type == "output":
-            self.temp_connection = ConnectionPath(self, scene=self.scene())
-        super().mousePressEvent(event)
+            if self.audio_module and self.connection.end_node and self.connection.end_node.audio_module:
+                try:
+                    self.audio_module.output_node.disconnect(self.connection.end_node.audio_module.input_node)
+                except AttributeError:
+                    pass  # ignore if disconnect is not implemented
+        elif self.node_type == "input":
+            if self.audio_module and self.connection.start_node and self.connection.start_node.audio_module:
+                try:
+                    self.connection.start_node.audio_module.output_node.disconnect(self.audio_module.input_node)
+                except AttributeError:
+                    pass
+
+        # Remove visual connection
+        self.scene().removeItem(self.connection)
+        if self.connection.start_node:
+            self.connection.start_node.connection = None
+        if self.connection.end_node:
+            self.connection.end_node.connection = None
+        self.connection = None
+
+    # Start a new connection if this is an output node
+    if self.node_type == "output":
+        self.temp_connection = ConnectionPath(self, scene=self.scene())
+
+    super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         if self.temp_connection:
@@ -121,6 +147,7 @@ class ModuleItem(QGraphicsRectItem):
         self.width_override = width_override
         self.height_override = height_override
 
+        # Background
         self.setBrush(QBrush(QColor(40, 40, 40)))
         self.setPen(QPen(QColor(120, 120, 120)))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
@@ -136,11 +163,11 @@ class ModuleItem(QGraphicsRectItem):
         self.input_node = NodeCircle(self, "input") if getattr(module, "input_node", None) else None
         self.output_node = NodeCircle(self, "output") if getattr(module, "output_node", None) else None
 
-        # Embed UI and resize
+        # Embed UI and dynamically resize
         self.get_ui()
 
     def get_ui(self):
-        """Embed the module's custom QWidget UI and resize the ModuleItem dynamically using proxy.boundingRect()."""
+        """Embed the module's custom QWidget UI and dynamically resize ModuleItem."""
         if not hasattr(self.module, "get_ui"):
             return
 
@@ -148,10 +175,10 @@ class ModuleItem(QGraphicsRectItem):
         if ui_widget is None:
             return
 
-        # Ensure layout is calculated
+        # Ensure layout calculations are updated
         ui_widget.adjustSize()
 
-        # Embed in QGraphicsScene via QGraphicsProxyWidget
+        # Embed using QGraphicsProxyWidget
         proxy = QGraphicsProxyWidget(self)
         proxy.setWidget(ui_widget)
         proxy.setZValue(2)
@@ -161,21 +188,21 @@ class ModuleItem(QGraphicsRectItem):
         padding = 10
         proxy.setPos(10, label_height + padding)
 
-        # Use proxy's actual boundingRect for width/height
+        # Use proxy.boundingRect for accurate size
         proxy_rect = proxy.boundingRect()
         new_width = max(self.DEFAULT_WIDTH, proxy_rect.width() + 20)
         new_height = max(self.DEFAULT_HEIGHT, proxy_rect.height() + label_height + 20)
 
-        # Apply width/height overrides if provided
+        # Apply manual overrides
         if self.width_override:
             new_width = max(new_width, self.width_override)
         if self.height_override:
             new_height = max(new_height, self.height_override)
 
-        # Resize ModuleItem
+        # Set ModuleItem rect
         self.setRect(0, 0, new_width, new_height)
 
-        # Reposition nodes vertically centered
+        # Reposition input/output nodes vertically centered
         if self.input_node:
             self.input_node.setPos(0, new_height / 2)
         if self.output_node:
