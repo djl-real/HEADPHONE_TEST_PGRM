@@ -1,4 +1,5 @@
 # ui_elements.py
+import traceback
 from PyQt6.QtWidgets import (
     QGraphicsRectItem, QGraphicsEllipseItem, QGraphicsPathItem, QGraphicsItem,
     QGraphicsTextItem, QGraphicsProxyWidget, QGraphicsSimpleTextItem
@@ -129,7 +130,7 @@ class NodeCircle(QGraphicsEllipseItem):
         # Disconnect any existing connection
         if self.connection:
             try:
-                self.connection.disconnect()
+                self.connection.disconnect() #MOI
             except Exception:
                 pass
             self.connection = None
@@ -226,7 +227,6 @@ class CloseButton(QGraphicsSimpleTextItem):
             pass
         super().mousePressEvent(event)
 
-
 class ModuleItem(QGraphicsRectItem):
     """Graphics item representing an audio module with multiple I/O nodes."""
 
@@ -234,25 +234,26 @@ class ModuleItem(QGraphicsRectItem):
     DEFAULT_HEIGHT = 100
     NODE_SPACING = 20
 
+    HIGHLIGHT_COLOR = QColor(220, 180, 30)
+    DEFAULT_CONN_COLOR = QColor(180, 180, 180)
+
     def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         self.module = module
         self.width_override = width_override
         self.height_override = height_override
 
-        # Visuals
         self.setBrush(QBrush(QColor(40, 40, 40)))
         self.setPen(QPen(QColor(120, 120, 120)))
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges)
+        self.setAcceptHoverEvents(True)
 
-        # Title label
         self.label = QGraphicsTextItem(module.__class__.__name__, self)
         self.label.setDefaultTextColor(QColor(255, 255, 255))
         self.label.setPos(10, 5)
 
-        # Close button
         self.close_button = CloseButton(self)
 
         # Node circles
@@ -268,11 +269,9 @@ class ModuleItem(QGraphicsRectItem):
             nc.setZValue(2)
             self.output_nodes.append(nc)
 
-        # Backward compatibility
         self.input_node = self.input_nodes[0] if self.input_nodes else None
         self.output_node = self.output_nodes[0] if self.output_nodes else None
 
-        # Embed UI
         self._proxy_widget = None
         self.get_ui()
 
@@ -340,7 +339,7 @@ class ModuleItem(QGraphicsRectItem):
         for node in self.input_nodes + self.output_nodes:
             if node.connection:
                 try:
-                    node.connection.disconnect()
+                    node.connection.disconnect() #MOI
                 except Exception:
                     pass
                 node.connection = None
@@ -376,11 +375,91 @@ class ModuleItem(QGraphicsRectItem):
         self._proxy_widget = None
 
     def itemChange(self, change, value):
+        """Update connections and highlight overlapping paths while moving."""
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            # Update connected paths
             for node in self.input_nodes + self.output_nodes:
                 if getattr(node, "connection", None):
                     try:
                         node.connection.update_path()
                     except Exception:
                         pass
+
+            # Only highlight if module has at least 1 input and 1 output
+            if len(self.input_nodes) > 0 and len(self.output_nodes) > 0 and self.scene():
+                module_rect = self.sceneBoundingRect()
+                for item in self.scene().items():
+                    if isinstance(item, ConnectionPath):
+                        path_rect = item.boundingRect().translated(item.scenePos())
+                        if module_rect.intersects(path_rect):
+                            pen = item.pen()
+                            pen.setColor(self.HIGHLIGHT_COLOR)
+                            item.setPen(pen)
+                        else:
+                            pen = item.pen()
+                            pen.setColor(self.DEFAULT_CONN_COLOR)
+                            item.setPen(pen)
+
         return super().itemChange(change, value)
+    
+    def insert(self, input_node: NodeCircle, output_node: NodeCircle):
+        """
+        Insert this module between two existing NodeCircles (input and output).
+        Updates both backend and frontend connections.
+        """
+        if not (self.input_nodes and self.output_nodes):
+            print("not enough")
+            return  # cannot insert a module without input/output
+
+        backend_input = input_node.node_obj
+        backend_output = output_node.node_obj
+
+        # Frontend: remove old connection
+        if input_node.connection:
+            input_node.connection.disconnect()
+
+        if backend_input and backend_output:
+            # Backend insertion
+            try:
+                self.module.insert(backend_output, backend_input)
+            except Exception:
+                print("insert failed")
+                traceback.print_exc()
+                pass
+
+        # Create new connections visually
+        try:
+            # Connect input_node to this module's first input
+            new_conn_start = ConnectionPath(input_node, self.input_nodes[0], scene=self.scene())
+            input_node.connection = new_conn_start
+            self.input_nodes[0].connection = new_conn_start
+
+            # Connect this module's first output to output_node
+            new_conn_end = ConnectionPath(self.output_nodes[0], output_node, scene=self.scene())
+            self.output_nodes[0].connection = new_conn_end
+            output_node.connection = new_conn_end
+        except Exception:
+            print("ui failed")
+            pass
+        
+
+
+    def mouseReleaseEvent(self, event):
+        """Finalize dragging and insert module if released over a highlighted connection."""
+        super().mouseReleaseEvent(event)
+
+        if len(self.input_nodes) < 1 or len(self.output_nodes) < 1 or not self.scene():
+            return
+
+        module_rect = self.sceneBoundingRect()
+        highlighted_connections = [
+            item for item in self.scene().items()
+            if isinstance(item, ConnectionPath)
+            and item.pen().color() == self.HIGHLIGHT_COLOR
+            and module_rect.intersects(item.boundingRect().translated(item.scenePos()))
+        ]
+
+        if highlighted_connections:
+            # Insert module into the first highlighted connection
+            conn = highlighted_connections[0]
+            self.insert(conn.start_node, conn.end_node)

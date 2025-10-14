@@ -43,6 +43,16 @@ class AudioModule:
         """
         Returns a QWidget representing the module's custom UI.
         By default, modules have no UI.
-        Child classes (like EndpointModule) can override this.
+        Child classes can override this.
         """
         return None
+
+    # --- Insert module between nodes ---
+    def insert(self, input_node: InputNode, output_node: OutputNode):
+
+        # enforce io
+        if self.input_count == 0 or self.output_count == 0:
+            raise Exception("Module must have at least 1 input and 1 output to insert")
+
+        self.input_node.connect(output_node)
+        self.output_node.connect(input_node)

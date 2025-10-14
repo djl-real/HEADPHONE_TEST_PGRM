@@ -1,5 +1,6 @@
 # modules/endpoint.py
 import numpy as np
+import traceback
 from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
@@ -20,16 +21,21 @@ class EndpointModule(AudioModule):
 
     def generate(self, frames: int) -> np.ndarray:
         # Always receive from input, even when muted
-        if self.input_node is None:
-            data = np.zeros((frames, 2), dtype=np.float32)
-        else:
-            data = self.input_node.receive(frames)
-        
-        if self.muted:
-            return np.zeros_like(data, dtype=np.float32)
+        try:
+            if self.input_node is None:
+                data = np.zeros((frames, 2), dtype=np.float32)
+            else:
+                data = self.input_node.receive(frames)
+            
+            if self.muted:
+                return np.zeros_like(data, dtype=np.float32)
 
-        gain = db_to_linear(self.volume_db)
-        return data * gain
+            gain = db_to_linear(self.volume_db)
+            return data * gain
+        except Exception:
+            print("endpoint generate failed")
+            traceback.print_exc()
+            return np.zeros((frames, 2), dtype=np.float32)
 
     def get_ui(self) -> QWidget:
         widget = QWidget()
