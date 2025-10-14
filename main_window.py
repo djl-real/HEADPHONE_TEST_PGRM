@@ -3,13 +3,17 @@ import sys
 import time
 import numpy as np
 import sounddevice as sd
+
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QPinchGesture, QGraphicsItem
+    QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
+    QGraphicsItem, QGraphicsRectItem, QScrollBar, QPinchGesture
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QWheelEvent, QPainter, QPen, QTouchEvent
+    QBrush, QColor, QWheelEvent, QPainter, QPen
 )
-from PyQt6.QtCore import Qt, QPointF, QEvent, QTimer
+from PyQt6.QtCore import (
+    Qt, QPointF, QRectF, QEvent, QTimer
+)
 
 from audio_module import AudioModule
 from toolbar_manager import ToolbarManager
@@ -56,7 +60,7 @@ class WorkspaceScene(QGraphicsScene):
 
 
 class WorkspaceView(QGraphicsView):
-    """Custom QGraphicsView with zoom, pan, pinch gesture, and touch scrolling with inertia."""
+    """Custom QGraphicsView with zoom, pan, pinch gesture, inertia, and drag-box selection."""
 
     INERTIA_FPS = 60
     INERTIA_DECAY = 0.93
@@ -72,6 +76,11 @@ class WorkspaceView(QGraphicsView):
         # Mouse panning
         self.last_mouse_pos = None
         self.panning = False
+
+        # Drag-selection
+        self.drag_selecting = False
+        self.drag_start_scene_pos = None
+        self.selection_rect_item: QGraphicsRectItem | None = None
 
         # Touch support
         self.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
@@ -94,7 +103,36 @@ class WorkspaceView(QGraphicsView):
         self.scale(zoom, zoom)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.MiddleButton or (event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+        if event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            clicked_items = self.scene().items(scene_pos)
+
+            # If click is on empty space, start drag-selection
+            if not any(isinstance(it, ModuleItem) for it in clicked_items):
+                self.drag_selecting = True
+                self.drag_start_scene_pos = scene_pos
+
+                # Create or reset rectangle
+                if not self.selection_rect_item:
+                    pen = QPen(QColor(100, 180, 255, 180))
+                    pen.setWidth(1)
+                    brush = QColor(100, 180, 255, 50)
+                    self.selection_rect_item = QGraphicsRectItem()
+                    self.selection_rect_item.setPen(pen)
+                    self.selection_rect_item.setBrush(brush)
+                    self.selection_rect_item.setZValue(10000)
+                    self.scene().addItem(self.selection_rect_item)
+                self.selection_rect_item.setRect(QRectF(scene_pos, scene_pos))
+                self.selection_rect_item.show()
+                event.accept()
+                return
+            else:
+                # Clicked on a module: default behavior
+                super().mousePressEvent(event)
+
+        elif event.button() == Qt.MouseButton.MiddleButton or (
+            event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        ):
             self.panning = True
             self.last_mouse_pos = event.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
@@ -102,24 +140,60 @@ class WorkspaceView(QGraphicsView):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.panning and self.last_mouse_pos:
+        if self.drag_selecting and self.drag_start_scene_pos:
+            scene_pos = self.mapToScene(event.pos())
+            rect = self._make_rect(self.drag_start_scene_pos, scene_pos)
+            self.selection_rect_item.setRect(rect)
+
+            # Update which items are selected
+            for item in self.scene().items():
+                if isinstance(item, ModuleItem):
+                    item_rect = item.sceneBoundingRect()
+                    item.setSelected(rect.intersects(item_rect))
+            event.accept()
+            return
+
+        elif self.panning and self.last_mouse_pos:
             delta = event.pos() - self.last_mouse_pos
             self.last_mouse_pos = event.pos()
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta.x()))
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta.y()))
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - int(delta.x())
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - int(delta.y())
+            )
+            event.accept()
+            return
         else:
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        if self.panning:
+        if event.button() == Qt.MouseButton.LeftButton and self.drag_selecting:
+            self.drag_selecting = False
+            if self.selection_rect_item:
+                self.selection_rect_item.hide()
+            self.drag_start_scene_pos = None
+            event.accept()
+            return
+
+        elif self.panning:
             self.panning = False
             self.setCursor(Qt.CursorShape.ArrowCursor)
-        else:
-            super().mouseReleaseEvent(event)
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)
+
+    def _make_rect(self, p1: QPointF, p2: QPointF) -> QRectF:
+        return QRectF(
+            min(p1.x(), p2.x()),
+            min(p1.y(), p2.y()),
+            abs(p2.x() - p1.x()),
+            abs(p2.y() - p1.y()),
+        )
 
     # ---------- Touch ----------
     def viewportEvent(self, event):
-        """Intercept touch events at the viewport level."""
         if event.type() in (QEvent.Type.TouchBegin, QEvent.Type.TouchUpdate, QEvent.Type.TouchEnd):
             return self.handleTouchEvent(event)
         return super().viewportEvent(event)
@@ -133,18 +207,13 @@ class WorkspaceView(QGraphicsView):
         pos = tp.position()
         scene_pos = self.mapToScene(pos.toPoint())
 
-        # Check what the touch is over
         items = self.scene().items(scene_pos) if self.scene() else []
         movable = any(
             isinstance(it, ModuleItem)
             or it.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             for it in items
         )
-
-        # ✅ Prevent panning when touching NodeCircle
         over_node = any(it.__class__.__name__ == "NodeCircle" for it in items)
-
-        # Only allow panning if not touching a movable module or node
         block_pan = movable or over_node
 
         if event.type() == QEvent.Type.TouchBegin:
@@ -166,7 +235,6 @@ class WorkspaceView(QGraphicsView):
                     self.verticalScrollBar().value() - int(delta.y())
                 )
 
-                # velocity update
                 now = time.time()
                 dt = max(1e-6, now - (self._last_move_time or now))
                 vx = (pos.x() - (self._last_move_pos.x() if self._last_move_pos else pos.x())) / dt
@@ -188,17 +256,14 @@ class WorkspaceView(QGraphicsView):
                 event.accept()
                 return True
 
-        # If touch is over movable module or node, let them handle it
         return super().event(event)
-
-
 
     # ---------- Gesture ----------
     def event(self, event):
         if event.type() == QEvent.Type.Gesture:
             return self.gestureEvent(event)
         return super().event(event)
-    
+
     def gestureEvent(self, event):
         pinch = event.gesture(Qt.GestureType.PinchGesture)
         if pinch and isinstance(pinch, QPinchGesture):
@@ -206,19 +271,13 @@ class WorkspaceView(QGraphicsView):
             if center_pt is None:
                 return False
 
-            # Map the gesture center to scene coordinates before scaling
+            # Keep zoom centered on pinch midpoint
             scene_center_before = self.mapToScene(center_pt.toPoint())
-
-            # Apply zoom
             if pinch.changeFlags() & QPinchGesture.ChangeFlag.ScaleFactorChanged:
                 scale_factor = pinch.scaleFactor()
                 if scale_factor > 0:
                     self.scale(scale_factor, scale_factor)
-
-            # Map the same screen point after scaling
             scene_center_after = self.mapToScene(center_pt.toPoint())
-
-            # Compute shift so that the gesture center stays fixed in the scene
             delta_scene = scene_center_after - scene_center_before
             self.translate(delta_scene.x(), delta_scene.y())
 
@@ -231,8 +290,7 @@ class WorkspaceView(QGraphicsView):
     def _start_inertia(self):
         self._stop_inertia()
         self._inertia_timer = QTimer(self)
-        interval_ms = int(1000 / self.INERTIA_FPS)
-        self._inertia_timer.setInterval(interval_ms)
+        self._inertia_timer.setInterval(int(1000 / self.INERTIA_FPS))
         self._inertia_timer.timeout.connect(self._inertia_step)
         self._inertia_timer.start()
 
@@ -257,7 +315,6 @@ class WorkspaceView(QGraphicsView):
         self._vel_y *= self.INERTIA_DECAY
         if abs(self._vel_x) < self.INERTIA_MIN_VEL and abs(self._vel_y) < self.INERTIA_MIN_VEL:
             self._stop_inertia()
-
 
 
 
