@@ -133,9 +133,9 @@ class WorkspaceView(QGraphicsView):
         pos = tp.position()
         scene_pos = self.mapToScene(pos.toPoint())
 
-        # Optionally disable scrolling over movable items
-        item = self.scene().itemAt(scene_pos, self.transform())
-        movable = False  # always scroll regardless of item
+        # Check if the touch is over a movable item (module or widget)
+        items = self.scene().items(scene_pos) if self.scene() else []
+        movable = any(isinstance(it, ModuleItem) or it.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsMovable for it in items)
 
         if event.type() == QEvent.Type.TouchBegin:
             if not movable:
@@ -174,7 +174,9 @@ class WorkspaceView(QGraphicsView):
                 event.accept()
                 return True
 
+        # If touch is over movable module, let the module handle it
         return super().event(event)
+
 
     # ---------- Gesture ----------
     def event(self, event):
