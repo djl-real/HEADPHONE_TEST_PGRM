@@ -11,6 +11,7 @@ from modules.music import Music
 from modules.soundboard import Soundboard
 from modules.crossfade import Crossfade
 from modules.hold import Hold
+from modules.tts import TextToSpeech
 from ui_elements import ModuleItem
 
 
@@ -26,7 +27,7 @@ class ToolbarManager:
 
         # Organize modules by folder
         self.module_folders = {
-            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard)],
+            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard), ("TTS", TextToSpeech)],
             "Effects": [("Bandpass", Bandpass), ("Pan", Pan), ("Crossfade", Crossfade), ("Hold", Hold)],
             "Master": [("Endpoint", EndpointModule)],
         }
