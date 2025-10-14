@@ -10,6 +10,7 @@ class Node:
     def __init__(self, module: 'AudioModule'):
         self.module = module
         self.connection: Optional['Node'] = None
+        self.block_touch = True
 
     def disconnect(self):
         """Disconnect this node from its connected counterpart."""

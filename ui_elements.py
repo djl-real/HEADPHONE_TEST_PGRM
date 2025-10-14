@@ -390,17 +390,21 @@ class ModuleItem(QGraphicsRectItem):
                 module_rect = self.sceneBoundingRect()
                 for item in self.scene().items():
                     if isinstance(item, ConnectionPath):
+                        # Skip connections where this module is already the start or end
+                        if (item.start_node and item.start_node.module_item == self) or \
+                        (item.end_node and item.end_node.module_item == self):
+                            continue
+
                         path_rect = item.boundingRect().translated(item.scenePos())
+                        pen = item.pen()
                         if module_rect.intersects(path_rect):
-                            pen = item.pen()
                             pen.setColor(self.HIGHLIGHT_COLOR)
-                            item.setPen(pen)
                         else:
-                            pen = item.pen()
                             pen.setColor(self.DEFAULT_CONN_COLOR)
-                            item.setPen(pen)
+                        item.setPen(pen)
 
         return super().itemChange(change, value)
+
     
     def insert(self, input_node: NodeCircle, output_node: NodeCircle):
         """

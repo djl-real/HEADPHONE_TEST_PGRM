@@ -133,12 +133,22 @@ class WorkspaceView(QGraphicsView):
         pos = tp.position()
         scene_pos = self.mapToScene(pos.toPoint())
 
-        # Check if the touch is over a movable item (module or widget)
+        # Check what the touch is over
         items = self.scene().items(scene_pos) if self.scene() else []
-        movable = any(isinstance(it, ModuleItem) or it.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsMovable for it in items)
+        movable = any(
+            isinstance(it, ModuleItem)
+            or it.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            for it in items
+        )
+
+        # ✅ Prevent panning when touching NodeCircle
+        over_node = any(it.__class__.__name__ == "NodeCircle" for it in items)
+
+        # Only allow panning if not touching a movable module or node
+        block_pan = movable or over_node
 
         if event.type() == QEvent.Type.TouchBegin:
-            if not movable:
+            if not block_pan:
                 self.touch_last_pos = pos
                 self._last_move_pos = QPointF(pos)
                 self._last_move_time = time.time()
@@ -147,10 +157,14 @@ class WorkspaceView(QGraphicsView):
             return True
 
         elif event.type() == QEvent.Type.TouchUpdate:
-            if not movable and self.touch_last_pos is not None:
+            if not block_pan and self.touch_last_pos is not None:
                 delta = pos - self.touch_last_pos
-                self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(delta.x()))
-                self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(delta.y()))
+                self.horizontalScrollBar().setValue(
+                    self.horizontalScrollBar().value() - int(delta.x())
+                )
+                self.verticalScrollBar().setValue(
+                    self.verticalScrollBar().value() - int(delta.y())
+                )
 
                 # velocity update
                 now = time.time()
@@ -167,15 +181,16 @@ class WorkspaceView(QGraphicsView):
                 return True
 
         elif event.type() == QEvent.Type.TouchEnd:
-            if not movable:
+            if not block_pan:
                 if abs(self._vel_x) > 50 or abs(self._vel_y) > 50:
                     self._start_inertia()
                 self.touch_last_pos = None
                 event.accept()
                 return True
 
-        # If touch is over movable module, let the module handle it
+        # If touch is over movable module or node, let them handle it
         return super().event(event)
+
 
 
     # ---------- Gesture ----------
