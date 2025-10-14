@@ -198,28 +198,33 @@ class WorkspaceView(QGraphicsView):
         if event.type() == QEvent.Type.Gesture:
             return self.gestureEvent(event)
         return super().event(event)
-
+    
     def gestureEvent(self, event):
         pinch = event.gesture(Qt.GestureType.PinchGesture)
         if pinch and isinstance(pinch, QPinchGesture):
             center_pt = pinch.centerPoint()
             if center_pt is None:
                 return False
-            old_anchor = self.transformationAnchor()
-            self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
-            vp_center = QPointF(center_pt)
-            scene_before = self.mapToScene(vp_center.toPoint())
+
+            # Map the gesture center to scene coordinates before scaling
+            scene_center_before = self.mapToScene(center_pt.toPoint())
+
+            # Apply zoom
             if pinch.changeFlags() & QPinchGesture.ChangeFlag.ScaleFactorChanged:
-                scale = pinch.scaleFactor()
-                if scale > 0:
-                    self.scale(scale, scale)
-            scene_after = self.mapToScene(vp_center.toPoint())
-            shift = scene_after - scene_before
-            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() + int(shift.x()))
-            self.verticalScrollBar().setValue(self.verticalScrollBar().value() + int(shift.y()))
-            self.setTransformationAnchor(old_anchor)
+                scale_factor = pinch.scaleFactor()
+                if scale_factor > 0:
+                    self.scale(scale_factor, scale_factor)
+
+            # Map the same screen point after scaling
+            scene_center_after = self.mapToScene(center_pt.toPoint())
+
+            # Compute shift so that the gesture center stays fixed in the scene
+            delta_scene = scene_center_after - scene_center_before
+            self.translate(delta_scene.x(), delta_scene.y())
+
             event.accept()
             return True
+
         return False
 
     # ---------- Inertia ----------

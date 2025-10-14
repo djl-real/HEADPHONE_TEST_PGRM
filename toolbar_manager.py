@@ -1,7 +1,7 @@
 # toolbar_manager.py
 from PyQt6.QtWidgets import QToolBar, QMenu, QToolButton
 from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPointF, QSize
 from modules.bandpass import Bandpass
 from modules.endpoint import EndpointModule
 from modules.vco import VCO
@@ -25,11 +25,43 @@ class ToolbarManager:
         self.toolbar = QToolBar("Modules")
         self.main_window.addToolBar(self.toolbar)
 
+        # ✅ Touchscreen-friendly scaling
+        self.toolbar.setIconSize(QSize(48, 48))  # larger icons
+        self.toolbar.setStyleSheet("""
+            QToolBar {
+                spacing: 12px;
+                padding: 8px;
+            }
+            QToolButton {
+                min-width: 60px;
+                min-height: 30px;
+                font-size: 16px;
+                padding: 10px 16px;
+                border-radius: 10px;
+            }
+            QToolButton:hover {
+                background-color: rgba(255, 255, 255, 0.1);
+            }
+        """)
+
         # Organize modules by folder
         self.module_folders = {
-            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard), ("TTS", TextToSpeech)],
-            "Effects": [("Bandpass", Bandpass), ("Pan", Pan), ("Crossfade", Crossfade), ("Hold", Hold)],
-            "Master": [("Endpoint", EndpointModule)],
+            "Source": [
+                ("Music", Music),
+                ("VCO", VCO),
+                ("Static", Noise),
+                ("Soundboard", Soundboard),
+                ("TTS", TextToSpeech)
+            ],
+            "Effects": [
+                ("Bandpass", Bandpass),
+                ("Pan", Pan),
+                ("Crossfade", Crossfade),
+                ("Hold", Hold)
+            ],
+            "Master": [
+                ("Endpoint", EndpointModule)
+            ],
         }
 
         self.create_folder_buttons()
@@ -48,6 +80,25 @@ class ToolbarManager:
             button.setText(folder_name)
             button.setMenu(menu)
             button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+
+            # ✅ Make dropdown menus touch-friendly
+            button.setStyleSheet("""
+                QToolButton::menu-indicator {
+                    width: 16px;
+                    height: 16px;
+                }
+                QMenu {
+                    font-size: 15px;
+                    padding: 8px;
+                }
+                QMenu::item {
+                    padding: 5px 10px;
+                }
+                QMenu::item:selected {
+                    background-color: rgba(100, 100, 100, 0.3);
+                }
+            """)
+
             self.toolbar.addWidget(button)
 
     def spawn_module(self, name: str):
