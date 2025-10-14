@@ -1,6 +1,8 @@
 # modules/hold.py
 import numpy as np
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton, QCheckBox
+)
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
@@ -13,6 +15,7 @@ class Hold(AudioModule):
     def __init__(self):
         super().__init__(input_count=1, output_count=1)
         self.hold_active = False
+        self.halt_enabled = True  # checkbox state
         self.block_hold = 10  # how many recent blocks to store
         self.buffer = [np.zeros((512, 2), dtype=np.float32) for _ in range(MAX_BLOCK_HOLD)]
         self.pointer = 0
@@ -22,7 +25,12 @@ class Hold(AudioModule):
         if self.input_node is None:
             return np.zeros((frames, 2), dtype=np.float32)
 
+        # When hold is active
         if self.hold_active:
+            if not self.halt_enabled:
+                # Still call receive even though we won't use it
+                _ = self.input_node.receive(frames)
+
             # Loop over last n held blocks
             block = self.buffer[self.play_index % self.block_hold]
             self.play_index = (self.play_index + 1) % self.block_hold
@@ -71,6 +79,11 @@ class Hold(AudioModule):
         slider_layout.addWidget(self.hold_button)
         layout.addLayout(slider_layout)
 
+        # --- Halt checkbox ---
+        self.halt_checkbox = QCheckBox("Halt")
+        self.halt_checkbox.setChecked(True)
+        layout.addWidget(self.halt_checkbox, alignment=Qt.AlignmentFlag.AlignCenter)
+
         # Label under controls
         self.value_label = QLabel(f"Blocks: {self.block_hold}")
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -79,6 +92,7 @@ class Hold(AudioModule):
         # Connect signals
         self.hold_slider.valueChanged.connect(self._on_slider_change)
         self.hold_button.toggled.connect(self._on_hold_toggle)
+        self.halt_checkbox.toggled.connect(self._on_halt_toggle)
 
         return widget
 
@@ -91,3 +105,6 @@ class Hold(AudioModule):
         if not state:
             # Reset playback pointer when exiting hold
             self.play_index = self.pointer - self.block_hold
+
+    def _on_halt_toggle(self, state):
+        self.halt_enabled = state

@@ -7,16 +7,15 @@ from PyQt6.QtWidgets import (
     QSlider, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont, QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 from audio_module import AudioModule
 import mutagen
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
-MAX_BLOCK_HOLD = 15
 
 
 class Music(AudioModule):
-    """Music player module with playlist, scrubbing, reverse, and hold buffer support."""
+    """Music player module with playlist, scrubbing, reverse, and pitch control."""
 
     def __init__(self, sample_rate=44100):
         super().__init__(input_count=0, output_count=1)
@@ -29,12 +28,6 @@ class Music(AudioModule):
         self.playhead = 0.0
         self.pitch = 1.0
         self.reverse = False
-        self.hold_active = False
-
-        # Hold buffer
-        self.block_hold = 10
-        self.hold_buffer = [np.zeros((512, 2), dtype=np.float32) for _ in range(MAX_BLOCK_HOLD)]
-        self.hold_pointer = 0
 
         # Scrub flag
         self.scrubbing_user = False
@@ -124,34 +117,20 @@ class Music(AudioModule):
             self.play_buffer = self.songs[index]
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
-            self.hold_buffer = [np.zeros_like(self.hold_buffer[0]) for _ in range(MAX_BLOCK_HOLD)]
-            self.hold_pointer = 0
 
     def stop_playback(self):
         self.playing = False
         self.playhead = 0.0
-        self.hold_buffer = [np.zeros_like(self.hold_buffer[0]) for _ in range(MAX_BLOCK_HOLD)]
-        self.hold_pointer = 0
 
     def generate(self, frames: int) -> np.ndarray:
         out = np.zeros((frames, 2), dtype=np.float32)
         if self.current_index is None or self.current_index >= len(self.songs):
             return out
 
-        # Hold mode
-        if self.hold_active:
-            for i in range(frames):
-                idx = i % self.hold_buffer[0].shape[0]
-                out[i] = self.hold_buffer[self.hold_pointer][idx]
-            self.hold_pointer = (self.hold_pointer + 1) % self.block_hold
-            return out.astype(np.float32)
-
         if not self.playing:
             return out
 
         track = self.play_buffer
-        block = np.zeros((frames, 2), dtype=np.float32)
-
         for i in range(frames):
             idx = int(self.playhead)
             if idx < 0 or idx >= len(track) - 1:
@@ -159,14 +138,10 @@ class Music(AudioModule):
                 break
             next_idx = idx + (1 if not self.reverse else -1)
             frac = abs(self.playhead - idx)
-            block[i] = (1 - frac) * track[idx] + frac * track[next_idx]
+            out[i] = (1 - frac) * track[idx] + frac * track[next_idx]
             self.playhead += self.pitch * (-1 if self.reverse else 1)
 
-        # Add block to hold buffer
-        self.hold_buffer[self.hold_pointer % MAX_BLOCK_HOLD] = block.copy()
-        self.hold_pointer = (self.hold_pointer + 1) % MAX_BLOCK_HOLD
-
-        return block.astype(np.float32)
+        return out.astype(np.float32)
 
     # --- UI ---
     def get_ui(self) -> QWidget:
@@ -187,7 +162,7 @@ class Music(AudioModule):
         layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
 
-        # Buttons
+        # --- Buttons ---
         btn_layout = QHBoxLayout()
         play_btn = QPushButton("Play/Pause")
         stop_btn = QPushButton("Stop")
@@ -201,7 +176,7 @@ class Music(AudioModule):
         stop_btn.clicked.connect(self.stop_playback)
         reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
 
-        # Pitch slider (logarithmic mapping)
+        # --- Pitch slider (logarithmic mapping) ---
         layout.addWidget(QLabel("Pitch"))
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
@@ -221,7 +196,7 @@ class Music(AudioModule):
         layout.addWidget(pitch_slider)
         pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
 
-        # Tick labels
+        # Tick labels under slider
         tick_layout = QHBoxLayout()
         for lbl in ["0.5", "", "", "", "1.0", "", "", "", "2.0"]:
             tick_label = QLabel(lbl)
@@ -229,9 +204,10 @@ class Music(AudioModule):
             tick_layout.addWidget(tick_label)
         layout.addLayout(tick_layout)
 
-        # Scrub slider + countdown
+        # --- Scrub slider + countdown ---
         self.scrub_label = QLabel("Remaining: 00:00")
         layout.addWidget(self.scrub_label)
+
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
@@ -252,35 +228,7 @@ class Music(AudioModule):
         self.scrub_slider.sliderReleased.connect(on_scrub_end)
         self.scrub_slider.valueChanged.connect(on_scrub)
 
-        # Hold controls
-        hold_layout = QHBoxLayout()
-        self.hold_slider = QSlider(Qt.Orientation.Vertical)
-        self.hold_slider.setMinimum(0)
-        self.hold_slider.setMaximum(MAX_BLOCK_HOLD)
-        self.hold_slider.setValue(self.block_hold)
-        hold_layout.addWidget(self.hold_slider)
-
-        self.hold_button = QPushButton("Hold")
-        self.hold_button.setCheckable(True)
-        self.hold_button.setFixedSize(50, 50)
-        self.hold_button.setStyleSheet("""
-            QPushButton {
-                border-radius: 25px;
-                background-color: #3498db;
-                color: white;
-                font-weight: bold;
-            }
-            QPushButton:checked {
-                background-color: #2ecc71;
-            }
-        """)
-        hold_layout.addWidget(self.hold_button)
-        layout.addLayout(hold_layout)
-
-        self.hold_slider.valueChanged.connect(lambda val: setattr(self, "block_hold", val))
-        self.hold_button.toggled.connect(lambda state: setattr(self, "hold_active", state))
-
-        # Timer updates scrub slider and countdown
+        # --- Timer for UI updates ---
         self.update_timer = QTimer(widget)
         self.update_timer.setInterval(50)
 

@@ -4,13 +4,11 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QPointF
 from modules.bandpass import Bandpass
 from modules.endpoint import EndpointModule
-from modules.LFO import LFO
 from modules.vco import VCO
 from modules.static import Noise
 from modules.pan import Pan
 from modules.music import Music
 from modules.soundboard import Soundboard
-from modules.envelope import EnvelopeGenerator
 from modules.crossfade import Crossfade
 from modules.hold import Hold
 from ui_elements import ModuleItem
@@ -28,8 +26,8 @@ class ToolbarManager:
 
         # Organize modules by folder
         self.module_folders = {
-            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard), ("LFO", LFO)],
-            "Effects": [("Bandpass", Bandpass), ("Pan", Pan), ("Crossfade", Crossfade), ("Hold", Hold), ("Envelope", EnvelopeGenerator)],
+            "Source": [("Music", Music), ("VCO", VCO), ("Static", Noise), ("Soundboard", Soundboard)],
+            "Effects": [("Bandpass", Bandpass), ("Pan", Pan), ("Crossfade", Crossfade), ("Hold", Hold)],
             "Master": [("Endpoint", EndpointModule)],
         }
 

@@ -230,7 +230,7 @@ class CloseButton(QGraphicsSimpleTextItem):
 class ModuleItem(QGraphicsRectItem):
     """Graphics item representing an audio module with multiple I/O nodes."""
 
-    DEFAULT_WIDTH = 180
+    DEFAULT_WIDTH = 150
     DEFAULT_HEIGHT = 100
     NODE_SPACING = 20
 
