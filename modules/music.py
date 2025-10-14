@@ -7,11 +7,12 @@ from PyQt6.QtWidgets import (
     QSlider, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QFontDatabase
 from audio_module import AudioModule
+import mutagen
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
-MAX_BLOCK_HOLD = 15  # Maximum number of blocks to store for hold
+MAX_BLOCK_HOLD = 15
 
 
 class Music(AudioModule):
@@ -41,6 +42,7 @@ class Music(AudioModule):
         # Data
         self.songs = []
         self.song_names = []
+        self.song_display_texts = []
         self.load_playlist()
 
     # --- Playlist ---
@@ -50,11 +52,17 @@ class Music(AudioModule):
 
         self.songs.clear()
         self.song_names.clear()
+        self.song_display_texts.clear()
+
+        # Column widths for alignment
+        MAX_TITLE_LEN = 15
+        MAX_ARTIST_LEN = 15
 
         for fname in os.listdir(playlist_dir):
             if fname.lower().endswith(AUDIO_EXTENSIONS):
                 path = os.path.join(playlist_dir, fname)
                 try:
+                    # Load audio
                     data, fs = sf.read(path, dtype="float32")
                     if data.ndim == 1:
                         data = np.column_stack((data, data))
@@ -63,8 +71,47 @@ class Music(AudioModule):
                         idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
                         idx = idx[idx < len(data)]
                         data = data[idx]
+
                     self.songs.append(data)
                     self.song_names.append(fname)
+
+                    # --- Metadata extraction ---
+                    title = os.path.splitext(fname)[0]
+                    artist = "Unknown Artist"
+                    try:
+                        meta = mutagen.File(path, easy=True)
+                        if meta is not None:
+                            if "title" in meta:
+                                title = meta["title"][0]
+                            if "artist" in meta:
+                                artist = meta["artist"][0]
+                    except Exception:
+                        pass
+
+                    # Clean and pad text fields
+                    title = title.strip()
+                    artist = artist.strip()
+
+                    if len(title) > MAX_TITLE_LEN:
+                        title = title[:MAX_TITLE_LEN - 1] + "…"
+                    else:
+                        title = title.ljust(MAX_TITLE_LEN)
+
+                    if len(artist) > MAX_ARTIST_LEN:
+                        artist = artist[:MAX_ARTIST_LEN - 1] + "…"
+                    else:
+                        artist = artist.ljust(MAX_ARTIST_LEN)
+
+                    # Duration
+                    length_seconds = int(len(data) / self.sample_rate)
+                    mins = length_seconds // 60
+                    secs = length_seconds % 60
+                    duration = f"{mins:02d}:{secs:02d}"
+
+                    # Monospace-aligned text
+                    display_text = f"{title} {artist} {duration}"
+                    self.song_display_texts.append(display_text)
+
                 except Exception as e:
                     print(f"[Music] Failed to load {fname}: {e}")
 
@@ -126,10 +173,16 @@ class Music(AudioModule):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Playlist
+        # Playlist with monospace font
         self.list_widget = QListWidget()
-        for name in self.song_names:
-            self.list_widget.addItem(name)
+        mono_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+        mono_font.setPointSize(11)
+        self.list_widget.setFont(mono_font)
+        self.list_widget.setMinimumWidth(350)
+
+        for display_text in self.song_display_texts:
+            self.list_widget.addItem(display_text)
+
         self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
@@ -148,9 +201,8 @@ class Music(AudioModule):
         stop_btn.clicked.connect(self.stop_playback)
         reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
 
-        # Pitch slider with logarithmic mapping
+        # Pitch slider (logarithmic mapping)
         layout.addWidget(QLabel("Pitch"))
-
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
         pitch_slider.setMaximum(100)
@@ -169,7 +221,7 @@ class Music(AudioModule):
         layout.addWidget(pitch_slider)
         pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
 
-        # Tick labels for pitch
+        # Tick labels
         tick_layout = QHBoxLayout()
         for lbl in ["0.5", "", "", "", "1.0", "", "", "", "2.0"]:
             tick_label = QLabel(lbl)
@@ -177,10 +229,9 @@ class Music(AudioModule):
             tick_layout.addWidget(tick_label)
         layout.addLayout(tick_layout)
 
-        # Scrub slider with live countdown label
+        # Scrub slider + countdown
         self.scrub_label = QLabel("Remaining: 00:00")
         layout.addWidget(self.scrub_label)
-
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
@@ -237,13 +288,11 @@ class Music(AudioModule):
             if not self.scrubbing_user and self.playing and self.current_index is not None:
                 track = self.songs[self.current_index]
                 if len(track) > 0:
-                    # Update scrub slider
                     progress = min(max(self.playhead / len(track), 0.0), 1.0)
                     self.scrub_slider.blockSignals(True)
                     self.scrub_slider.setValue(int(progress * 1000))
                     self.scrub_slider.blockSignals(False)
 
-                    # Update remaining time label
                     remaining_samples = len(track) - int(self.playhead)
                     remaining_seconds = remaining_samples / self.sample_rate
                     mins = int(remaining_seconds // 60)
@@ -255,23 +304,11 @@ class Music(AudioModule):
 
         return widget
 
-
-
+    # --- Helpers ---
     def update_playhead_from_scrub(self, val):
         if self.current_index is not None and 0 <= self.current_index < len(self.songs):
             track_len = len(self.songs[self.current_index])
             self.playhead = (val / 1000.0) * track_len
-
-    def update_scrub_slider(self):
-        if not hasattr(self, "scrub_slider") or self.scrub_slider is None:
-            return
-        if not self.scrubbing_user and self.playing and self.current_index is not None:
-            track = self.songs[self.current_index]
-            if len(track) > 0:
-                progress = min(max(self.playhead / len(track), 0.0), 1.0)
-                self.scrub_slider.blockSignals(True)
-                self.scrub_slider.setValue(int(progress * 1000))
-                self.scrub_slider.blockSignals(False)
 
     def cleanup(self):
         if hasattr(self, "update_timer") and self.update_timer is not None:
