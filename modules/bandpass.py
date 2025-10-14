@@ -1,83 +1,135 @@
 # modules/bandpass.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QPoint
+from PyQt6.QtGui import QPainter, QColor
 from audio_module import AudioModule
-from nodes import OutputNode
+
+
+class RangeSlider(QWidget):
+    """A simple two-handle horizontal slider to select a range."""
+    rangeChanged = pyqtSignal(int, int)  # low, high
+
+    def __init__(self, minimum=1, maximum=20000, low=1, high=20000, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(20)  # half the previous height
+        self.setMinimumWidth(400)  # make it longer
+        self.minimum = minimum
+        self.maximum = maximum
+        self.low = low
+        self.high = high
+        self.dragging_low = False
+        self.dragging_high = False
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        rect = self.rect()
+
+        half_height = rect.height() // 2
+        top = (rect.height() - half_height) // 2  # center vertically
+
+        # Draw background
+        painter.setBrush(QColor(180, 180, 180))
+        painter.drawRect(QRect(0, top, rect.width(), half_height))
+
+        # Draw range selection
+        low_pos = self.value_to_pos(self.low)
+        high_pos = self.value_to_pos(self.high)
+        painter.setBrush(QColor(220, 180, 30))
+        painter.drawRect(QRect(low_pos, top, high_pos - low_pos, half_height))
+
+        # Draw handles
+        handle_width = 10
+        painter.setBrush(QColor(80, 80, 80))
+        painter.drawRect(QRect(low_pos - handle_width // 2, top, handle_width, half_height))
+        painter.drawRect(QRect(high_pos - handle_width // 2, top, handle_width, half_height))
+    def value_to_pos(self, val):
+        """Map value to widget X coordinate."""
+        return int((val - self.minimum) / (self.maximum - self.minimum) * self.width())
+
+    def pos_to_value(self, x):
+        """Map widget X coordinate to value."""
+        return int(x / self.width() * (self.maximum - self.minimum) + self.minimum)
+
+    def mousePressEvent(self, event):
+        low_pos = self.value_to_pos(self.low)
+        high_pos = self.value_to_pos(self.high)
+        x = event.position().x()
+
+        if abs(x - low_pos) < 10:
+            self.dragging_low = True
+        elif abs(x - high_pos) < 10:
+            self.dragging_high = True
+
+    def mouseMoveEvent(self, event):
+        x = event.position().x()
+        val = self.pos_to_value(x)
+        if self.dragging_low:
+            self.low = max(self.minimum, min(val, self.high))
+            self.rangeChanged.emit(self.low, self.high)
+            self.update()
+        elif self.dragging_high:
+            self.high = min(self.maximum, max(val, self.low))
+            self.rangeChanged.emit(self.low, self.high)
+            self.update()
+
+    def mouseReleaseEvent(self, event):
+        self.dragging_low = False
+        self.dragging_high = False
 
 
 class Bandpass(AudioModule):
-    """Simple one-pole bandpass filter with adjustable low and high cutoff frequencies."""
+    """One-pole bandpass filter with a range slider for low and high cutoff frequencies."""
 
-    def __init__(self, sample_rate=44100, lp_freq=20000.0, hp_freq=20.0):
+    def __init__(self, sample_rate=44100, lp_freq=20000.0, hp_freq=1.0):
         super().__init__(input_count=1, output_count=1)
         self.sample_rate = sample_rate
         self.lp_freq = lp_freq
         self.hp_freq = hp_freq
-        self.prev_x = np.zeros(2)  # previous input for HP
-        self.prev_hp = np.zeros(2) # previous HP output
-        self.prev_lp = np.zeros(2) # previous LP output
+        self.prev_x = np.zeros(2)
+        self.prev_hp = np.zeros(2)
+        self.prev_lp = np.zeros(2)
 
     def generate(self, frames: int) -> np.ndarray:
+        """Generate bandpass-filtered audio using FFT for the given number of frames."""
         if self.input_node is None:
             return np.zeros((frames, 2), dtype=np.float32)
 
-        x = self.input_node.receive(frames)
+        x = self.input_node.receive(frames)  # shape: (frames, channels)
         y = np.zeros_like(x)
 
-        # Precompute stable filter coefficients
-        hp_alpha = self.hp_freq / (self.hp_freq + self.sample_rate / (2 * np.pi))
-        lp_alpha = self.sample_rate / (2 * np.pi) / (self.sample_rate / (2 * np.pi) + self.lp_freq)
+        # FFT parameters
+        N = frames
+        freqs = np.fft.rfftfreq(N, d=1.0 / self.sample_rate)  # frequencies for positive FFT bins
 
-        for n in range(frames):
-            # High-pass (one-pole)
-            hp_out = hp_alpha * (self.prev_hp + x[n] - self.prev_x)
-            self.prev_x = x[n]
-            self.prev_hp = hp_out
+        # Create bandpass mask
+        mask = (freqs >= self.hp_freq) & (freqs <= self.lp_freq)
 
-            # Low-pass (one-pole)
-            lp_out = lp_alpha * hp_out + (1 - lp_alpha) * self.prev_lp
-            self.prev_lp = lp_out
-
-            y[n] = lp_out
+        # Apply FFT per channel
+        for ch in range(x.shape[1]):
+            X = np.fft.rfft(x[:, ch])
+            X_filtered = X * mask  # zero out frequencies outside band
+            y[:, ch] = np.fft.irfft(X_filtered, n=N)
 
         return y.astype(np.float32)
 
-
     def get_ui(self) -> QWidget:
-        """Return QWidget with low-pass and high-pass sliders."""
+        """Return QWidget with single range slider for low/high cutoff."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        # Low-pass slider
-        lp_label = QLabel(f"Low-pass Frequency: {self.lp_freq:.0f} Hz")
-        layout.addWidget(lp_label)
+        label = QLabel(f"Bandpass: {self.hp_freq:.0f} Hz – {self.lp_freq:.0f} Hz")
+        layout.addWidget(label)
 
-        lp_slider = QSlider(Qt.Orientation.Horizontal)
-        lp_slider.setMinimum(20)
-        lp_slider.setMaximum(20000)
-        lp_slider.setValue(int(self.lp_freq))
-        layout.addWidget(lp_slider)
+        slider = RangeSlider()
+        layout.addWidget(slider)
 
-        def on_lp_change(val):
-            self.lp_freq = float(val)
-            lp_label.setText(f"Low-pass Frequency: {self.lp_freq:.0f} Hz")
-        lp_slider.valueChanged.connect(on_lp_change)
+        def on_range_change(low, high):
+            self.hp_freq = low
+            self.lp_freq = high
+            label.setText(f"Bandpass: {self.hp_freq:.0f} Hz – {self.lp_freq:.0f} Hz")
 
-        # High-pass slider
-        hp_label = QLabel(f"High-pass Frequency: {self.hp_freq:.0f} Hz")
-        layout.addWidget(hp_label)
-
-        hp_slider = QSlider(Qt.Orientation.Horizontal)
-        hp_slider.setMinimum(20)
-        hp_slider.setMaximum(20000)
-        hp_slider.setValue(int(self.hp_freq))
-        layout.addWidget(hp_slider)
-
-        def on_hp_change(val):
-            self.hp_freq = float(val)
-            hp_label.setText(f"High-pass Frequency: {self.hp_freq:.0f} Hz")
-        hp_slider.valueChanged.connect(on_hp_change)
+        slider.rangeChanged.connect(on_range_change)
 
         return widget
