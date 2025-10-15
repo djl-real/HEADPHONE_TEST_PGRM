@@ -14,6 +14,8 @@ from modules.hold import Hold
 from modules.tts import TextToSpeech
 from modules.reverb import Reverb
 from modules.bitcrusher import Bitcrusher
+from modules.sum import Sum
+from modules.split import Split
 from ui_elements import ModuleItem
 
 
@@ -57,14 +59,16 @@ class ToolbarManager:
             ],
             "Effects": [
                 ("Pan", Pan),
-                ("Crossfade", Crossfade),
                 ("Hold", Hold),
                 ("Bitcrusher", Bitcrusher),
                 ("Reverb", Reverb),
                 ("Bandpass", Bandpass)
             ],
-            "Master": [
-                ("Endpoint", EndpointModule)
+            "Routing": [
+                ("Endpoint", EndpointModule),
+                ("Crossfade", Crossfade),
+                ("Sum", Sum),
+                ("Split", Split)
             ],
         }
 
