@@ -38,7 +38,7 @@ class Split(AudioModule):
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        label = QLabel("Split 1 → 2 (Buffered)")
+        label = QLabel("1:2")
         layout.addWidget(label)
 
         return widget
