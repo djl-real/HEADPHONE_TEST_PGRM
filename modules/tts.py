@@ -4,7 +4,7 @@ import tempfile
 import pyttsx3
 import gc
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QComboBox, QSlider
+    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider
 )
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
@@ -111,7 +111,8 @@ class TextToSpeech(AudioModule):
 
         # --- Text box ---
         layout.addWidget(QLabel("Enter text to speak:"))
-        text_input = QLineEdit()
+        text_input = QTextEdit()
+        text_input.setFixedHeight(80)
         layout.addWidget(text_input)
 
         # --- Voice selection ---
@@ -151,7 +152,7 @@ class TextToSpeech(AudioModule):
         layout.addWidget(play_btn)
 
         def on_play():
-            self.text = text_input.text().strip()
+            self.text = text_input.toPlainText().strip()
             self.generate_tts_audio(self.text)
 
         play_btn.clicked.connect(on_play)
