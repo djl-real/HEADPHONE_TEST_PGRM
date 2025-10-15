@@ -12,6 +12,8 @@ from modules.soundboard import Soundboard
 from modules.crossfade import Crossfade
 from modules.hold import Hold
 from modules.tts import TextToSpeech
+from modules.reverb import Reverb
+from modules.bitcrusher import Bitcrusher
 from ui_elements import ModuleItem
 
 
@@ -54,10 +56,12 @@ class ToolbarManager:
                 ("TTS", TextToSpeech)
             ],
             "Effects": [
-                ("Bandpass", Bandpass),
                 ("Pan", Pan),
                 ("Crossfade", Crossfade),
-                ("Hold", Hold)
+                ("Hold", Hold),
+                ("Bitcrusher", Bitcrusher),
+                ("Reverb", Reverb),
+                ("Bandpass", Bandpass)
             ],
             "Master": [
                 ("Endpoint", EndpointModule)
