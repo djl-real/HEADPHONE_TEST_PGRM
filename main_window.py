@@ -109,7 +109,7 @@ class WorkspaceView(QGraphicsView):
             clicked_items = self.scene().items(scene_pos)
 
             # If click is on empty space, start drag-selection
-            if not any(isinstance(it, ModuleItem) for it in clicked_items):
+            if not any(it.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable for it in clicked_items):
                 self.drag_selecting = True
                 self.drag_start_scene_pos = scene_pos
 

@@ -2,18 +2,20 @@
     "version": 2,
     "modules": [
         {
-            "id": "2097688146816",
-            "type": "Reverb",
+            "id": "2487513642192",
+            "type": "TTS",
             "pos": [
-                -431.0,
-                -131.0
+                -84.5,
+                -16.950000000000003
             ],
             "state": {
-                "input_count": 1,
+                "input_count": 0,
                 "output_count": 1,
-                "mix": 0.76,
-                "decay": 0.06,
-                "room_size": 0.79
+                "text": "hello",
+                "current_voice": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Speech\\Voices\\Tokens\\TTS_MS_EN-US_DAVID_11.0",
+                "pitch": 1.0,
+                "playing": true,
+                "pos": 0
             }
         }
     ],

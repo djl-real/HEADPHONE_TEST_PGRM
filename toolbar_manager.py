@@ -11,7 +11,7 @@ from modules.music import Music
 from modules.soundboard import Soundboard
 from modules.crossfade import Crossfade
 from modules.hold import Hold
-from modules.tts import TextToSpeech
+from modules.tts import TTS
 from modules.reverb import Reverb
 from modules.bitcrusher import Bitcrusher
 from modules.sum import Sum
@@ -58,7 +58,7 @@ class ToolbarManager:
                 ("Wave", Wave),
                 ("Static", Static),
                 ("Soundboard", Soundboard),
-                ("TTS", TextToSpeech)
+                ("TTS", TTS)
             ],
             "Effects": [
                 ("Pan", Pan),

@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
 
-class TextToSpeech(AudioModule):
+class TTS(AudioModule):
     """Text-to-speech generator module with voice and pitch control."""
 
     def __init__(self, sample_rate=44100):
