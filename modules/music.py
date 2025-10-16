@@ -28,18 +28,20 @@ class Music(AudioModule):
         self.playhead = 0.0
         self.pitch = 1.0
         self.reverse = False
-
-        # Scrub flag
         self.scrubbing_user = False
 
         # Data
-        self.songs = []
-        self.song_names = []
-        self.song_display_texts = []
+        self.songs = []               # Will hold np.ndarray or None (lazy)
+        self.song_names = []          # Filenames
+        self.song_display_texts = []  # Monospace display
+        self.list_widget = None       # Will be created in get_ui()
+
+        # Load playlist immediately
         self.load_playlist()
 
-    # --- Playlist ---
+    # --- Playlist scanning ---
     def load_playlist(self):
+        """Scan playlist folder, load metadata only for responsiveness."""
         playlist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlist"))
         os.makedirs(playlist_dir, exist_ok=True)
 
@@ -47,7 +49,6 @@ class Music(AudioModule):
         self.song_names.clear()
         self.song_display_texts.clear()
 
-        # Column widths for alignment
         MAX_TITLE_LEN = 15
         MAX_ARTIST_LEN = 15
 
@@ -55,66 +56,74 @@ class Music(AudioModule):
             if fname.lower().endswith(AUDIO_EXTENSIONS):
                 path = os.path.join(playlist_dir, fname)
                 try:
-                    # Load audio
-                    data, fs = sf.read(path, dtype="float32")
-                    if data.ndim == 1:
-                        data = np.column_stack((data, data))
-                    if fs != self.sample_rate:
-                        ratio = self.sample_rate / fs
-                        idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
-                        idx = idx[idx < len(data)]
-                        data = data[idx]
-
-                    self.songs.append(data)
-                    self.song_names.append(fname)
-
-                    # --- Metadata extraction ---
+                    # --- Metadata ---
                     title = os.path.splitext(fname)[0]
                     artist = "Unknown Artist"
+                    length_seconds = 0
                     try:
                         meta = mutagen.File(path, easy=True)
-                        if meta is not None:
-                            if "title" in meta:
-                                title = meta["title"][0]
-                            if "artist" in meta:
-                                artist = meta["artist"][0]
+                        if meta:
+                            title = meta.get("title", [title])[0]
+                            artist = meta.get("artist", [artist])[0]
+                            if hasattr(meta, "info") and hasattr(meta.info, "length"):
+                                length_seconds = int(meta.info.length)
                     except Exception:
                         pass
 
-                    # Clean and pad text fields
-                    title = title.strip()
-                    artist = artist.strip()
+                    # Clean and pad
+                    title = (title.strip()[:MAX_TITLE_LEN-1] + "…") if len(title) > MAX_TITLE_LEN else title.ljust(MAX_TITLE_LEN)
+                    artist = (artist.strip()[:MAX_ARTIST_LEN-1] + "…") if len(artist) > MAX_ARTIST_LEN else artist.ljust(MAX_ARTIST_LEN)
 
-                    if len(title) > MAX_TITLE_LEN:
-                        title = title[:MAX_TITLE_LEN - 1] + "…"
-                    else:
-                        title = title.ljust(MAX_TITLE_LEN)
-
-                    if len(artist) > MAX_ARTIST_LEN:
-                        artist = artist[:MAX_ARTIST_LEN - 1] + "…"
-                    else:
-                        artist = artist.ljust(MAX_ARTIST_LEN)
-
-                    # Duration
-                    length_seconds = int(len(data) / self.sample_rate)
-                    mins = length_seconds // 60
-                    secs = length_seconds % 60
+                    mins, secs = divmod(length_seconds, 60)
                     duration = f"{mins:02d}:{secs:02d}"
 
-                    # Monospace-aligned text
                     display_text = f"{title} {artist} {duration}"
                     self.song_display_texts.append(display_text)
+                    self.song_names.append(fname)
+                    self.songs.append(None)  # Placeholder for lazy loading
 
                 except Exception as e:
-                    print(f"[Music] Failed to load {fname}: {e}")
+                    print(f"[Music] Failed to scan {fname}: {e}")
+
+        # Populate UI list if it exists
+        self.populate_list_widget()
+
+    def populate_list_widget(self):
+        """Populate the QListWidget with song display texts."""
+        if self.list_widget is not None:
+            self.list_widget.clear()
+            for display_text in self.song_display_texts:
+                self.list_widget.addItem(display_text)
+
+    # --- Lazy audio loading ---
+    def load_audio_file(self, index):
+        """Load audio data into memory only when needed."""
+        if self.songs[index] is not None:
+            return self.songs[index]
+
+        fname = self.song_names[index]
+        path = os.path.join(os.path.dirname(__file__), "..", "playlist", fname)
+        data, fs = sf.read(path, dtype="float32")
+        if data.ndim == 1:
+            data = np.column_stack((data, data))
+        if fs != self.sample_rate:
+            ratio = self.sample_rate / fs
+            idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
+            idx = idx[idx < len(data)]
+            data = data[idx]
+        self.songs[index] = data
+        return data
 
     # --- Playback ---
     def toggle_play(self, index: int):
-        if self.current_index == index:
+        if index < 0 or index >= len(self.songs):
+            return
+
+        if self.current_index == index and self.play_buffer is not None:
             self.playing = not self.playing
         else:
             self.current_index = index
-            self.play_buffer = self.songs[index]
+            self.play_buffer = self.load_audio_file(index)
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
 
@@ -126,7 +135,6 @@ class Music(AudioModule):
         out = np.zeros((frames, 2), dtype=np.float32)
         if self.current_index is None or self.current_index >= len(self.songs):
             return out
-
         if not self.playing:
             return out
 
@@ -148,21 +156,21 @@ class Music(AudioModule):
         widget = QWidget()
         layout = QVBoxLayout(widget)
 
-        # Playlist with monospace font
+        # Playlist
         self.list_widget = QListWidget()
         mono_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         mono_font.setPointSize(11)
         self.list_widget.setFont(mono_font)
         self.list_widget.setMinimumWidth(350)
-
-        for display_text in self.song_display_texts:
-            self.list_widget.addItem(display_text)
-
         self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+
         layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
 
-        # --- Buttons ---
+        # Populate list now that the widget exists
+        self.populate_list_widget()
+
+        # Buttons
         btn_layout = QHBoxLayout()
         play_btn = QPushButton("Play/Pause")
         stop_btn = QPushButton("Stop")
@@ -176,7 +184,7 @@ class Music(AudioModule):
         stop_btn.clicked.connect(self.stop_playback)
         reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
 
-        # --- Pitch slider (logarithmic mapping) ---
+        # Pitch slider
         layout.addWidget(QLabel("Pitch"))
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
@@ -196,30 +204,25 @@ class Music(AudioModule):
         layout.addWidget(pitch_slider)
         pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
 
-        # Tick labels under slider
         tick_layout = QHBoxLayout()
         for lbl in ["0.5", "", "", "", "1.0", "", "", "", "2.0"]:
-            tick_label = QLabel(lbl)
-            tick_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            tick_layout.addWidget(tick_label)
+            l = QLabel(lbl)
+            l.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            tick_layout.addWidget(l)
         layout.addLayout(tick_layout)
 
-        # --- Scrub slider + countdown ---
+        # Scrub slider + label
         self.scrub_label = QLabel("Remaining: 00:00")
         layout.addWidget(self.scrub_label)
-
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
         layout.addWidget(self.scrub_slider)
 
-        def on_scrub_start():
-            self.scrubbing_user = True
-
+        def on_scrub_start(): self.scrubbing_user = True
         def on_scrub_end():
             self.scrubbing_user = False
             self.update_playhead_from_scrub(self.scrub_slider.value())
-
         def on_scrub(val):
             if self.scrubbing_user:
                 self.update_playhead_from_scrub(val)
@@ -228,14 +231,14 @@ class Music(AudioModule):
         self.scrub_slider.sliderReleased.connect(on_scrub_end)
         self.scrub_slider.valueChanged.connect(on_scrub)
 
-        # --- Timer for UI updates ---
+        # Timer for UI updates
         self.update_timer = QTimer(widget)
         self.update_timer.setInterval(50)
 
         def update_scrub_and_countdown():
             if not self.scrubbing_user and self.playing and self.current_index is not None:
-                track = self.songs[self.current_index]
-                if len(track) > 0:
+                track = self.play_buffer
+                if track is not None and len(track) > 0:
                     progress = min(max(self.playhead / len(track), 0.0), 1.0)
                     self.scrub_slider.blockSignals(True)
                     self.scrub_slider.setValue(int(progress * 1000))
@@ -243,8 +246,7 @@ class Music(AudioModule):
 
                     remaining_samples = len(track) - int(self.playhead)
                     remaining_seconds = remaining_samples / self.sample_rate
-                    mins = int(remaining_seconds // 60)
-                    secs = int(remaining_seconds % 60)
+                    mins, secs = divmod(int(remaining_seconds), 60)
                     self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}")
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
@@ -255,8 +257,9 @@ class Music(AudioModule):
     # --- Helpers ---
     def update_playhead_from_scrub(self, val):
         if self.current_index is not None and 0 <= self.current_index < len(self.songs):
-            track_len = len(self.songs[self.current_index])
-            self.playhead = (val / 1000.0) * track_len
+            track = self.songs[self.current_index]
+            if track is not None:
+                self.playhead = (val / 1000.0) * len(track)
 
     def cleanup(self):
         if hasattr(self, "update_timer") and self.update_timer is not None:
