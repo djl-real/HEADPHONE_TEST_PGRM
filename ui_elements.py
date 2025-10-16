@@ -103,43 +103,58 @@ class NodeCircle(QGraphicsEllipseItem):
 
     RADIUS = 10
 
-    def __init__(self, parent_item, node_type="output", node_obj=None):
+    def __init__(self, parent_item, node_type="output", node_obj=None, index=0):
+        """
+        Parameters:
+            parent_item: The parent QGraphicsItem (usually a ModuleItem)
+            node_type: "input" or "output"
+            node_obj: Backend node reference
+            index: Position index within the module's I/O list
+        """
         super().__init__(-self.RADIUS, -self.RADIUS, 2 * self.RADIUS, 2 * self.RADIUS, parent_item)
-        self.node_type = node_type  # "input" or "output"
-        self.node_obj = node_obj    # reference to backend node
+        self.node_type = node_type
+        self.node_obj = node_obj
+        self.index = index  # ✅ Unique index for saving/loading
         self.connection: ConnectionPath | None = None
 
-        # UI parent and backend module references
+        # Unique ID for layout serialization
+        self.node_id = f"{id(self)}"  # ✅ transient unique identifier
+
+        # UI parent and backend references
         self.module_item = parent_item
         self.audio_module = getattr(parent_item, "module", None)
 
+        # Node color by type
         color = QColor(150, 80, 200) if node_type == "output" else QColor(80, 150, 200)
         self.setBrush(QBrush(color))
 
-        # Interaction flags
+        # Enable mouse interaction
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsScenePositionChanges, True)
         self.setAcceptHoverEvents(True)
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setAcceptTouchEvents(True)
 
-        # Temporary connection (during drag)
+        # Temporary connection during drag
         self.temp_connection: ConnectionPath | None = None
+
+    # ------------------- Interaction Events -------------------
 
     def mousePressEvent(self, event):
         # Disconnect any existing connection
         if self.connection:
             try:
-                self.connection.disconnect() #MOI
+                self.connection.disconnect()
             except Exception:
                 pass
             self.connection = None
 
-        # If output node, start dragging a new connection
+        # Begin dragging a new connection from an output node
         if self.node_type == "output":
             try:
                 sc = self.scene()
-                self.temp_connection = ConnectionPath(self, scene=sc)
+                if sc:
+                    self.temp_connection = ConnectionPath(self, scene=sc)
             except Exception:
                 self.temp_connection = None
 
@@ -155,34 +170,36 @@ class NodeCircle(QGraphicsEllipseItem):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        # When releasing output drag, finalize connection if over input node
+        # When releasing an output connection, finalize or discard
         if self.temp_connection:
             try:
                 scene_pos = self.mapToScene(event.pos())
-                items = self.scene().items(scene_pos) if self.scene() is not None else []
-                target_input = next((it for it in items if isinstance(it, NodeCircle) and it.node_type == "input"), None)
+                items = self.scene().items(scene_pos) if self.scene() else []
+                target_input = next(
+                    (it for it in items if isinstance(it, NodeCircle) and it.node_type == "input"),
+                    None
+                )
 
                 if target_input:
-                    # connect backend nodes directly
+                    # Backend connection
                     if self.node_obj and target_input.node_obj:
                         try:
                             self.node_obj.connect(target_input.node_obj)
                         except Exception:
                             pass
 
-                    # finalize UI connection
+                    # Frontend path
                     self.temp_connection.end_node = target_input
                     self.connection = self.temp_connection
                     target_input.connection = self.temp_connection
                     self.temp_connection.update_path()
-
                 else:
-                    # Not dropped on an input — remove the temp path
+                    # Drop canceled — remove temp connection
                     try:
                         self.temp_connection.disconnect()
                     except Exception:
                         sc = self.scene()
-                        if sc and self.temp_connection and self.temp_connection in sc.items():
+                        if sc and self.temp_connection in sc.items():
                             sc.removeItem(self.temp_connection)
 
                 self.temp_connection = None
@@ -205,6 +222,32 @@ class NodeCircle(QGraphicsEllipseItem):
         except Exception:
             pass
         super().hoverLeaveEvent(event)
+
+    # ------------------- Serialization -------------------
+
+    def serialize(self) -> dict:
+        """Return a dict representation for saving layout."""
+        return {
+            "type": self.node_type,
+            "index": self.index,
+            "module_id": getattr(self.module_item, "module_id", None),
+        }
+
+    @staticmethod
+    def deserialize(data: dict, module_lookup: dict):
+        """
+        Static helper to rebuild NodeCircle connections when loading layout.
+        module_lookup maps module_id -> ModuleItem.
+        """
+        mod = module_lookup.get(data.get("module_id"))
+        if not mod:
+            return None
+
+        if data["type"] == "input" and data["index"] < len(mod.input_nodes):
+            return mod.input_nodes[data["index"]]
+        elif data["type"] == "output" and data["index"] < len(mod.output_nodes):
+            return mod.output_nodes[data["index"]]
+        return None
 
 
 class CloseButton(QGraphicsSimpleTextItem):
@@ -240,6 +283,7 @@ class ModuleItem(QGraphicsRectItem):
     def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         self.module = module
+        self.module_id = f"{id(module)}"  # 🔧 unique ID for save/load mapping
         self.width_override = width_override
         self.height_override = height_override
 
@@ -259,13 +303,13 @@ class ModuleItem(QGraphicsRectItem):
         # Node circles
         self.input_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "input_nodes", [])):
-            nc = NodeCircle(self, "input", node_obj=node)
+            nc = NodeCircle(self, "input", node_obj=node, index=idx)  # 🔧 index passed in
             nc.setZValue(2)
             self.input_nodes.append(nc)
 
         self.output_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "output_nodes", [])):
-            nc = NodeCircle(self, "output", node_obj=node)
+            nc = NodeCircle(self, "output", node_obj=node, index=idx)  # 🔧 index passed in
             nc.setZValue(2)
             self.output_nodes.append(nc)
 
@@ -339,7 +383,7 @@ class ModuleItem(QGraphicsRectItem):
         for node in self.input_nodes + self.output_nodes:
             if node.connection:
                 try:
-                    node.connection.disconnect() #MOI
+                    node.connection.disconnect()
                 except Exception:
                     pass
                 node.connection = None
@@ -392,7 +436,7 @@ class ModuleItem(QGraphicsRectItem):
                     if isinstance(item, ConnectionPath):
                         # Skip connections where this module is already the start or end
                         if (item.start_node and item.start_node.module_item == self) or \
-                        (item.end_node and item.end_node.module_item == self):
+                           (item.end_node and item.end_node.module_item == self):
                             continue
 
                         path_rect = item.boundingRect().translated(item.scenePos())
@@ -405,15 +449,11 @@ class ModuleItem(QGraphicsRectItem):
 
         return super().itemChange(change, value)
 
-    
     def insert(self, input_node: NodeCircle, output_node: NodeCircle):
-        """
-        Insert this module between two existing NodeCircles (input and output).
-        Updates both backend and frontend connections.
-        """
+        """Insert this module between two existing NodeCircles (input and output)."""
         if not (self.input_nodes and self.output_nodes):
             print("not enough")
-            return  # cannot insert a module without input/output
+            return
 
         backend_input = input_node.node_obj
         backend_output = output_node.node_obj
@@ -423,30 +463,23 @@ class ModuleItem(QGraphicsRectItem):
             input_node.connection.disconnect()
 
         if backend_input and backend_output:
-            # Backend insertion
             try:
                 self.module.insert(backend_output, backend_input)
             except Exception:
                 print("insert failed")
                 traceback.print_exc()
-                pass
 
         # Create new connections visually
         try:
-            # Connect input_node to this module's first input
             new_conn_start = ConnectionPath(input_node, self.input_nodes[0], scene=self.scene())
             input_node.connection = new_conn_start
             self.input_nodes[0].connection = new_conn_start
 
-            # Connect this module's first output to output_node
             new_conn_end = ConnectionPath(self.output_nodes[0], output_node, scene=self.scene())
             self.output_nodes[0].connection = new_conn_end
             output_node.connection = new_conn_end
         except Exception:
             print("ui failed")
-            pass
-        
-
 
     def mouseReleaseEvent(self, event):
         """Finalize dragging and insert module if released over a highlighted connection."""
@@ -464,6 +497,5 @@ class ModuleItem(QGraphicsRectItem):
         ]
 
         if highlighted_connections:
-            # Insert module into the first highlighted connection
             conn = highlighted_connections[0]
             self.insert(conn.start_node, conn.end_node)

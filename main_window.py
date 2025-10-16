@@ -3,10 +3,11 @@ import sys
 import time
 import numpy as np
 import sounddevice as sd
+import json
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
-    QGraphicsItem, QGraphicsRectItem, QScrollBar, QPinchGesture
+    QGraphicsItem, QGraphicsRectItem, QPinchGesture, QFileDialog, QMessageBox
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QWheelEvent, QPainter, QPen
@@ -360,6 +361,136 @@ class MainWindow(QMainWindow):
             if audio is not None:
                 mix += audio
         outdata[:] = np.clip(mix, -1.0, 1.0)
+    
+    def save_layout(self, path: str):
+        """Save all modules, nodes, and connections to a .layout JSON file."""
+        if not path:
+            return
+
+        layout_data = {"version": 2, "modules": [], "connections": []}
+
+        # Collect modules
+        for item in self.scene.items():
+            if isinstance(item, ModuleItem):
+                module = item.module
+                pos = item.pos()
+                module_info = {
+                    "id": item.module_id,  # 🔧 unique ID
+                    "type": module.__class__.__name__,
+                    "pos": [pos.x(), pos.y()],
+                }
+                if hasattr(module, "serialize"):
+                    module_info["state"] = module.serialize()
+                layout_data["modules"].append(module_info)
+
+        # Collect connections
+        for item in self.scene.items():
+            if isinstance(item, ConnectionPath):
+                src_node = getattr(item, "start_node", None)
+                dst_node = getattr(item, "end_node", None)
+                if src_node and dst_node:
+                    src_item = src_node.module_item
+                    dst_item = dst_node.module_item
+                    if not src_item or not dst_item:
+                        continue
+                    layout_data["connections"].append({
+                        "from": {
+                            "module_id": src_item.module_id,
+                            "node_index": getattr(src_node, "index", 0),
+                            "type": "output"
+                        },
+                        "to": {
+                            "module_id": dst_item.module_id,
+                            "node_index": getattr(dst_node, "index", 0),
+                            "type": "input"
+                        },
+                    })
+
+        # Write to file
+        try:
+            with open(path, "w") as f:
+                json.dump(layout_data, f, indent=4)
+            QMessageBox.information(self, "Layout Saved", f"Layout saved to:\n{path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error Saving Layout", str(e))
+
+    def load_layout(self, path: str):
+        """Load modules, positions, and connections from a .layout JSON file."""
+        if not path:
+            return
+
+        try:
+            with open(path, "r") as f:
+                layout_data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Error Loading Layout", str(e))
+            return
+
+        # Clear scene
+        self.scene.clear()
+        self.modules.clear()
+        self.endpoints.clear()
+
+        module_map = {}  # 🔧 id → ModuleItem
+
+        # Recreate modules
+        for mod_info in layout_data.get("modules", []):
+            mod_type = mod_info.get("type")
+            module_id = mod_info.get("id")
+            pos_x, pos_y = mod_info.get("pos", [0, 0])
+
+            # Find matching class
+            cls = None
+            for folder_modules in self.toolbar_manager.module_folders.values():
+                for name, c in folder_modules:
+                    if name == mod_type:
+                        cls = c
+                        break
+                if cls:
+                    break
+
+            if not cls:
+                print(f"Skipping unknown module: {mod_type}")
+                continue
+
+            module = cls()
+            if hasattr(module, "deserialize"):
+                module.deserialize(mod_info.get("state", {}))
+
+            if "Endpoint" in mod_type:
+                self.endpoints.append(module)
+            else:
+                self.modules.append(module)
+
+            item = ModuleItem(module)
+            item.module_id = module_id  # 🔧 restore same ID
+            item.setPos(QPointF(pos_x, pos_y))
+            self.scene.addItem(item)
+            module_map[module_id] = item
+
+        # Recreate connections
+        for conn in layout_data.get("connections", []):
+            src_id = conn["from"]["module_id"]
+            dst_id = conn["to"]["module_id"]
+            src_idx = conn["from"]["node_index"]
+            dst_idx = conn["to"]["node_index"]
+
+            src_item = module_map.get(src_id)
+            dst_item = module_map.get(dst_id)
+            if not src_item or not dst_item:
+                continue
+
+            src_node = src_item.output_nodes[src_idx] if src_idx < len(src_item.output_nodes) else None
+            dst_node = dst_item.input_nodes[dst_idx] if dst_idx < len(dst_item.input_nodes) else None
+            if not src_node or not dst_node:
+                continue
+
+            conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
+            src_node.connection = conn_path
+            dst_node.connection = conn_path
+            self.scene.addItem(conn_path)
+
+        QMessageBox.information(self, "Layout Loaded", f"Layout loaded from:\n{path}")
 
 
 if __name__ == "__main__":
