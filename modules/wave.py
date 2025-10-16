@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 from nodes import OutputNode
 
-class VCO(AudioModule):
+class Wave(AudioModule):
     """Voltage Controlled Oscillator with selectable waveform and smooth pitch control."""
 
     def __init__(self, frequency=440.0, amplitude=0.5, sample_rate=44100):

@@ -1,4 +1,4 @@
-# modules/noise.py
+# modules/static.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider
 from PyQt6.QtCore import Qt
@@ -6,7 +6,7 @@ from audio_module import AudioModule
 from nodes import OutputNode
 
 
-class Noise(AudioModule):
+class Static(AudioModule):
     """White noise generator module with amplitude control."""
 
     def __init__(self, amplitude=0.5, sample_rate=44100):

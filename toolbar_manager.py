@@ -3,9 +3,9 @@ from PyQt6.QtWidgets import QToolBar, QMenu, QToolButton, QFileDialog
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QPointF, QSize
 from modules.bandpass import Bandpass
-from modules.endpoint import EndpointModule
-from modules.vco import VCO
-from modules.static import Noise
+from modules.endpoint import Endpoint
+from modules.wave import Wave
+from modules.static import Static
 from modules.pan import Pan
 from modules.music import Music
 from modules.soundboard import Soundboard
@@ -55,8 +55,8 @@ class ToolbarManager:
         self.module_folders = {
             "Source": [
                 ("Music", Music),
-                ("VCO", VCO),
-                ("Static", Noise),
+                ("Wave", Wave),
+                ("Static", Static),
                 ("Soundboard", Soundboard),
                 ("TTS", TextToSpeech)
             ],
@@ -68,7 +68,7 @@ class ToolbarManager:
                 ("Bandpass", Bandpass)
             ],
             "Routing": [
-                ("Endpoint", EndpointModule),
+                ("Endpoint", Endpoint),
                 ("Crossfade", Crossfade),
                 ("Sum", Sum),
                 ("Split", Split)
@@ -184,7 +184,7 @@ class ToolbarManager:
         module = cls()
 
         # Register module
-        if isinstance(module, EndpointModule):
+        if isinstance(module, Endpoint):
             self.main_window.endpoints.append(module)
         else:
             self.main_window.modules.append(module)

@@ -2,59 +2,51 @@
     "version": 2,
     "modules": [
         {
-            "id": "1756861856144",
-            "type": "Noise",
+            "id": "2760512835264",
+            "type": "Endpoint",
             "pos": [
-                -383.0,
-                180.0
+                768.0,
+                -194.0
             ]
         },
         {
-            "id": "1756718006352",
-            "type": "EndpointModule",
-            "pos": [
-                284.0,
-                -226.0
-            ]
-        },
-        {
-            "id": "1756717937808",
+            "id": "2760512834256",
             "type": "Pan",
             "pos": [
-                -74.0,
-                -196.0
+                320.0,
+                14.0
             ]
         },
         {
-            "id": "1756717797904",
-            "type": "Noise",
+            "id": "2760510698032",
+            "type": "Static",
             "pos": [
-                -410.0,
-                -71.0
+                -131.0,
+                -44.0
             ]
         }
     ],
     "connections": [
         {
             "from": {
-                "module_id": "1756717937808",
+                "module_id": "2760512834256",
                 "node_index": 0,
                 "type": "output"
             },
             "to": {
-                "module_id": "1756718006352",
+                "module_id": "2760512835264",
                 "node_index": 0,
                 "type": "input"
             }
         },
         {
             "from": {
-                "module_id": "1756717797904",
+                "module_id": "2760510698032",
                 "node_index": 0,
                 "type": "output"
             },
             "to": {
-                "module_id": "1756717937808",
+                "module_id": "2760512834256",
                 "node_index": 0,
                 "type": "input"
             }

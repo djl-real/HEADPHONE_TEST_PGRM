@@ -12,7 +12,7 @@ def db_to_linear(db_value: float) -> float:
     return 10.0 ** (db_value / 20.0)
 
 
-class EndpointModule(AudioModule):
+class Endpoint(AudioModule):
     """Final output module with vertical DJ-style volume fader and mute button"""
     def __init__(self, volume_db=-80.0):
         super().__init__(input_count=1, output_count=0)
