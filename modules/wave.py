@@ -109,3 +109,27 @@ class Wave(AudioModule):
         widget.setMinimumWidth(240)
         widget.setMinimumHeight(140)
         return widget
+        
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()  # includes input_count/output_count
+        data.update({
+            "frequency": self.frequency,
+            "target_frequency": self.target_frequency,
+            "amplitude": self.amplitude,
+            "wave_type": self.wave_type,
+            "freq_smooth_factor": self.freq_smooth_factor,
+            "phase": self.phase
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.frequency = state.get("frequency", 440.0)
+        self.target_frequency = state.get("target_frequency", self.frequency)
+        self.amplitude = state.get("amplitude", 0.5)
+        self.wave_type = state.get("wave_type", "Sine")
+        self.freq_smooth_factor = state.get("freq_smooth_factor", 0.02)
+        self.phase = state.get("phase", 0.0)

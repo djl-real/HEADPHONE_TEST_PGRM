@@ -47,3 +47,17 @@ class Pan(AudioModule):
 
         slider.valueChanged.connect(on_pan_change)
         return widget
+    
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()  # include input/output node info
+        data.update({
+            "pan": self.pan,
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.pan = state.get("pan", 0.0)

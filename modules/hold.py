@@ -108,3 +108,34 @@ class Hold(AudioModule):
 
     def _on_halt_toggle(self, state):
         self.halt_enabled = state
+
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()
+        data.update({
+            "hold_active": self.hold_active,
+            "halt_enabled": self.halt_enabled,
+            "block_hold": self.block_hold,
+            "pointer": self.pointer,
+            "play_index": self.play_index,
+            # Buffers can be stored as a list of lists for serialization
+            "buffer": [buf.tolist() for buf in self.buffer],
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.hold_active = state.get("hold_active", False)
+        self.halt_enabled = state.get("halt_enabled", True)
+        self.block_hold = state.get("block_hold", 10)
+        self.pointer = state.get("pointer", 0)
+        self.play_index = state.get("play_index", 0)
+        buffer_data = state.get("buffer", None)
+        if buffer_data is not None:
+            # Convert lists back to numpy arrays
+            self.buffer = [np.array(b, dtype=np.float32) for b in buffer_data]
+        else:
+            # Fallback to empty buffers
+            self.buffer = [np.zeros((512, 2), dtype=np.float32) for _ in range(MAX_BLOCK_HOLD)]

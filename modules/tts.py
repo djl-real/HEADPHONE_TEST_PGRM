@@ -158,3 +158,39 @@ class TextToSpeech(AudioModule):
         play_btn.clicked.connect(on_play)
 
         return widget
+    
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()  # includes input/output node counts
+        data.update({
+            "text": self.text,
+            "current_voice": self.current_voice,
+            "pitch": self.pitch,
+            "playing": self.playing,
+            "pos": self.pos,
+            # Note: buffer is transient; not serialized
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.text = state.get("text", "")
+        self.current_voice = state.get("current_voice", self.voices[0].id if self.voices else None)
+        self.pitch = state.get("pitch", 1.0)
+        self.playing = state.get("playing", False)
+        self.pos = state.get("pos", 0)
+
+        # Regenerate buffer if text exists
+        if self.text:
+            try:
+                self.generate_tts_audio(self.text)
+                # restore playback position if still playing
+                if not self.playing:
+                    self.pos = len(self.buffer)
+            except Exception as e:
+                print(f"[TTS] Failed to regenerate buffer on load: {e}")
+                self.buffer = np.zeros((0, 2), dtype=np.float32)
+                self.playing = False
+                self.pos = 0

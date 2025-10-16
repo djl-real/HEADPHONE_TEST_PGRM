@@ -431,7 +431,7 @@ class MainWindow(QMainWindow):
         self.modules.clear()
         self.endpoints.clear()
 
-        module_map = {}  # 🔧 id → ModuleItem
+        module_map = {}  # 🔧 module_id → ModuleItem
 
         # Recreate modules
         for mod_info in layout_data.get("modules", []):
@@ -468,7 +468,7 @@ class MainWindow(QMainWindow):
             self.scene.addItem(item)
             module_map[module_id] = item
 
-        # Recreate connections
+        # Recreate connections (UI + backend)
         for conn in layout_data.get("connections", []):
             src_id = conn["from"]["module_id"]
             dst_id = conn["to"]["module_id"]
@@ -485,12 +485,21 @@ class MainWindow(QMainWindow):
             if not src_node or not dst_node:
                 continue
 
+            # Connect backend nodes first
+            if src_node.node_obj and dst_node.node_obj:
+                try:
+                    src_node.node_obj.connect(dst_node.node_obj)
+                except Exception:
+                    pass
+
+            # Create UI connection
             conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
             src_node.connection = conn_path
             dst_node.connection = conn_path
             self.scene.addItem(conn_path)
 
         QMessageBox.information(self, "Layout Loaded", f"Layout loaded from:\n{path}")
+
 
 
 if __name__ == "__main__":

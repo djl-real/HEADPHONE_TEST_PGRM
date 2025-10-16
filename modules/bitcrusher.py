@@ -85,3 +85,26 @@ class Bitcrusher(AudioModule):
         rate_slider.valueChanged.connect(on_rate_change)
 
         return widget
+
+        # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()
+        data.update({
+            "sample_rate": self.sample_rate,
+            "bit_depth": self.bit_depth,
+            "sample_rate_reduction": self.sample_rate_reduction,
+            "prev_sample": self.prev_sample.tolist(),
+            "phase": self.phase,
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.sample_rate = state.get("sample_rate", 44100)
+        self.bit_depth = state.get("bit_depth", 8)
+        self.sample_rate_reduction = state.get("sample_rate_reduction", 8000)
+        prev_sample = state.get("prev_sample", [0.0, 0.0])
+        self.prev_sample = np.array(prev_sample, dtype=np.float32)
+        self.phase = state.get("phase", 0.0)

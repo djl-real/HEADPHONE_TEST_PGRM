@@ -2,7 +2,6 @@ import numpy as np
 from nodes import InputNode, OutputNode
 from PyQt6.QtWidgets import QWidget
 
-
 class AudioModule:
     """Base class for all audio modules with support for multiple I/O nodes."""
 
@@ -49,10 +48,44 @@ class AudioModule:
 
     # --- Insert module between nodes ---
     def insert(self, input_node: InputNode, output_node: OutputNode):
-
         # enforce io
         if self.input_count == 0 or self.output_count == 0:
             raise Exception("Module must have at least 1 input and 1 output to insert")
 
         self.input_node.connect(output_node)
         self.output_node.connect(input_node)
+
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """
+        Return a dict representation of this module's state.
+        Child modules should call super().serialize() and update the dict with their parameters.
+        """
+        return {
+            "input_count": self.input_count,
+            "output_count": self.output_count,
+        }
+
+    def deserialize(self, state: dict):
+        """
+        Restore this module's state from a dictionary.
+        Child modules should call super().deserialize(state) first.
+        """
+        self.input_count = state.get("input_count", 1)
+        self.output_count = state.get("output_count", 1)
+
+        # Recreate nodes if counts changed
+        current_inputs = len(self.input_nodes)
+        current_outputs = len(self.output_nodes)
+
+        # Add missing input nodes
+        for _ in range(self.input_count - current_inputs):
+            self.input_nodes.append(InputNode(self))
+
+        # Add missing output nodes
+        for _ in range(self.output_count - current_outputs):
+            self.output_nodes.append(OutputNode(self))
+
+        # Update single-node references
+        self.input_node = self.input_nodes[0] if self.input_nodes else None
+        self.output_node = self.output_nodes[0] if self.output_nodes else None

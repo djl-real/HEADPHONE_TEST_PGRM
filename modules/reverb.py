@@ -168,3 +168,32 @@ class Reverb(AudioModule):
         room_slider.valueChanged.connect(on_room_change)
 
         return widget
+
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()  # include input/output node info
+        data.update({
+            "mix": self.mix,
+            "decay": self.decay,
+            "room_size": self.room_size,
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.mix = state.get("mix", 0.3)
+        self.decay = state.get("decay", 0.5)
+        self.room_size = state.get("room_size", 0.5)
+
+        # Recompute buffer lengths based on room size
+        base_comb_delays = np.array([0.0297, 0.0371, 0.0411, 0.0437])
+        self.comb_delays = (base_comb_delays * self.sample_rate).astype(int)
+        self.comb_buffers = [np.zeros(d, dtype=np.float32) for d in self.comb_delays]
+        self.comb_indices = [0 for _ in self.comb_delays]
+
+        base_ap_delays = np.array([0.005, 0.0017])
+        self.ap_delays = (base_ap_delays * self.sample_rate).astype(int)
+        self.ap_buffers = [np.zeros(d, dtype=np.float32) for d in self.ap_delays]
+        self.ap_indices = [0 for _ in self.ap_delays]

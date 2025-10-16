@@ -94,3 +94,19 @@ class Endpoint(AudioModule):
         self.slider.valueChanged.connect(on_value_change)
 
         return widget
+
+        # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()
+        data.update({
+            "volume_db": self.volume_db,
+            "muted": self.muted,
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.volume_db = state.get("volume_db", DB_MIN)
+        self.muted = state.get("muted", False)

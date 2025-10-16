@@ -2,54 +2,20 @@
     "version": 2,
     "modules": [
         {
-            "id": "2760512835264",
-            "type": "Endpoint",
+            "id": "2097688146816",
+            "type": "Reverb",
             "pos": [
-                768.0,
-                -194.0
-            ]
-        },
-        {
-            "id": "2760512834256",
-            "type": "Pan",
-            "pos": [
-                320.0,
-                14.0
-            ]
-        },
-        {
-            "id": "2760510698032",
-            "type": "Static",
-            "pos": [
-                -131.0,
-                -44.0
-            ]
+                -431.0,
+                -131.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "mix": 0.76,
+                "decay": 0.06,
+                "room_size": 0.79
+            }
         }
     ],
-    "connections": [
-        {
-            "from": {
-                "module_id": "2760512834256",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2760512835264",
-                "node_index": 0,
-                "type": "input"
-            }
-        },
-        {
-            "from": {
-                "module_id": "2760510698032",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2760512834256",
-                "node_index": 0,
-                "type": "input"
-            }
-        }
-    ]
+    "connections": []
 }

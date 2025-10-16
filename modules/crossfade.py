@@ -44,3 +44,19 @@ class Crossfade(AudioModule):
 
         slider.valueChanged.connect(on_slider)
         return widget
+    
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()
+        data.update({
+            "sample_rate": self.sample_rate,
+            "crossfade": self.crossfade,
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.sample_rate = state.get("sample_rate", 44100)
+        self.crossfade = state.get("crossfade", 0.5)

@@ -133,3 +133,27 @@ class Bandpass(AudioModule):
         slider.rangeChanged.connect(on_range_change)
 
         return widget
+
+    # ---------------- Serialization ----------------
+    def serialize(self) -> dict:
+        """Return a dict representing this module's state."""
+        data = super().serialize()
+        data.update({
+            "sample_rate": self.sample_rate,
+            "lp_freq": self.lp_freq,
+            "hp_freq": self.hp_freq,
+            "prev_x": self.prev_x.tolist(),
+            "prev_hp": self.prev_hp.tolist(),
+            "prev_lp": self.prev_lp.tolist(),
+        })
+        return data
+
+    def deserialize(self, state: dict):
+        """Restore module state from a dictionary."""
+        super().deserialize(state)
+        self.sample_rate = state.get("sample_rate", 44100)
+        self.lp_freq = state.get("lp_freq", 20000.0)
+        self.hp_freq = state.get("hp_freq", 1.0)
+        self.prev_x = np.array(state.get("prev_x", [0.0, 0.0]), dtype=np.float32)
+        self.prev_hp = np.array(state.get("prev_hp", [0.0, 0.0]), dtype=np.float32)
+        self.prev_lp = np.array(state.get("prev_lp", [0.0, 0.0]), dtype=np.float32)
