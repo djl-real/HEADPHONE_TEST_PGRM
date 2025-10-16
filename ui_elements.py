@@ -181,18 +181,32 @@ class NodeCircle(QGraphicsEllipseItem):
                 )
 
                 if target_input:
-                    # Backend connection
+                    # If target input already has a connection, remove it cleanly
+                    if target_input.connection:
+                        try:
+                            old_conn = target_input.connection
+                            # Backend disconnection
+                            if getattr(target_input.node_obj, "disconnect", None):
+                                target_input.node_obj.disconnect()
+                            # Remove old connection visually
+                            old_conn.disconnect()
+                        except Exception:
+                            pass
+                        target_input.connection = None
+
+                    # Backend connection (new)
                     if self.node_obj and target_input.node_obj:
                         try:
                             self.node_obj.connect(target_input.node_obj)
                         except Exception:
-                            pass
+                            traceback.print_exc()
 
-                    # Frontend path
+                    # Frontend path setup
                     self.temp_connection.end_node = target_input
                     self.connection = self.temp_connection
                     target_input.connection = self.temp_connection
                     self.temp_connection.update_path()
+
                 else:
                     # Drop canceled — remove temp connection
                     try:
@@ -203,6 +217,7 @@ class NodeCircle(QGraphicsEllipseItem):
                             sc.removeItem(self.temp_connection)
 
                 self.temp_connection = None
+
             except Exception:
                 self.temp_connection = None
 
