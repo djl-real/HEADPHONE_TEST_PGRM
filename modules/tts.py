@@ -181,16 +181,3 @@ class TTS(AudioModule):
         self.pitch = state.get("pitch", 1.0)
         self.playing = state.get("playing", False)
         self.pos = state.get("pos", 0)
-
-        # Regenerate buffer if text exists
-        if self.text:
-            try:
-                self.generate_tts_audio(self.text)
-                # restore playback position if still playing
-                if not self.playing:
-                    self.pos = len(self.buffer)
-            except Exception as e:
-                print(f"[TTS] Failed to regenerate buffer on load: {e}")
-                self.buffer = np.zeros((0, 2), dtype=np.float32)
-                self.playing = False
-                self.pos = 0
