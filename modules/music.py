@@ -162,7 +162,7 @@ class Music(AudioModule):
         mono_font.setPointSize(11)
         self.list_widget.setFont(mono_font)
         self.list_widget.setMinimumWidth(350)
-        self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+        # self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
 
         layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
