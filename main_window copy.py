@@ -4,7 +4,6 @@ import time
 import numpy as np
 import sounddevice as sd
 import json
-import threading
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
@@ -38,9 +37,7 @@ class WorkspaceScene(QGraphicsScene):
         self.setSceneRect(-100000, -100000, 200000, 200000)
 
     def drawBackground(self, painter, rect):
-        # Reduce painting overhead: disable antialiasing, draw only visible lines.
-        painter.save()
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        # Fill background
         painter.fillRect(rect, QColor(25, 25, 25))
 
         left = int(rect.left()) - (int(rect.left()) % self.grid_size)
@@ -50,7 +47,7 @@ class WorkspaceScene(QGraphicsScene):
         pen.setWidth(self.grid_line_width)
         painter.setPen(pen)
 
-        # Vertical lines (draw only across rect)
+        # Vertical lines
         x = left
         while x < rect.right():
             painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
@@ -61,7 +58,6 @@ class WorkspaceScene(QGraphicsScene):
         while y < rect.bottom():
             painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
             y += self.grid_size
-        painter.restore()
 
 class WorkspaceView(QGraphicsView):
     """Custom QGraphicsView with zoom, pan, pinch gesture, inertia, and drag-box selection (touch + mouse)."""
@@ -72,7 +68,7 @@ class WorkspaceView(QGraphicsView):
 
     def __init__(self, scene):
         super().__init__(scene)
-        self.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setBackgroundBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.zoom_factor = 1.15
@@ -100,8 +96,6 @@ class WorkspaceView(QGraphicsView):
         self._vel_x = 0.0
         self._vel_y = 0.0
         self._inertia_timer: QTimer | None = None
-        self._last_touch_items_check_time = 0.0
-        self._last_touch_items_result = []
 
         # --- Touch mode state machine ---
         self.touch_mode = "IDLE"  # IDLE, PANNING, DRAG_HOLD_PENDING, DRAG_SELECTING, MULTITOUCH
@@ -109,7 +103,6 @@ class WorkspaceView(QGraphicsView):
         self.long_press_timer = QTimer()
         self.long_press_timer.setSingleShot(True)
         self.long_press_timer.timeout.connect(self._activate_drag_select)
-        self._touch_move_threshold = 20
 
     # ---------- Mouse ----------
     def wheelEvent(self, event: QWheelEvent):
@@ -197,18 +190,14 @@ class WorkspaceView(QGraphicsView):
 
         # --- IMPORTANT: do not steal touches that start on modules or nodes ---
         # This preserves module dragging and node connection behavior.
-        # Throttle the expensive scene().items() checks to ~20Hz
-        now = time.time()
-        if now - self._last_touch_items_check_time > 0.05:
-            try:
-                self._last_touch_items_result = self.scene().items(scene_pos) if self.scene() else []
-            except Exception:
-                self._last_touch_items_result = []
-            self._last_touch_items_check_time = now
-
-        if any(isinstance(it, (ModuleItem, NodeCircle)) for it in self._last_touch_items_result):
-            # Return to default handling so the QGraphicsItem receives events
-            return super().event(event)
+        try:
+            clicked_items = self.scene().items(scene_pos)
+            if any(isinstance(it, (ModuleItem, NodeCircle)) for it in clicked_items):
+                # Return to default handling so the QGraphicsItem receives events
+                return super().event(event)
+        except Exception:
+            # Defensive fallback: if querying items fails, continue with view handling
+            pass
 
         # Single-finger behavior on empty workspace:
         if event.type() == QEvent.Type.TouchBegin:
@@ -223,7 +212,7 @@ class WorkspaceView(QGraphicsView):
         elif event.type() == QEvent.Type.TouchUpdate:
             if self.touch_mode == "DRAG_HOLD_PENDING":
                 # If user moves too far, switch to panning and cancel long-press
-                 if self._touch_start_pos is not None and (pos - self._touch_start_pos).manhattanLength() > self._touch_move_threshold:
+                if self._touch_start_pos is not None and (pos - self._touch_start_pos).manhattanLength() > 20:
                     self.long_press_timer.stop()
                     self.touch_mode = "PANNING"
                     event.accept()
