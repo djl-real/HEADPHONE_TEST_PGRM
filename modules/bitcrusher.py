@@ -27,18 +27,23 @@ class Bitcrusher(AudioModule):
         levels = 2 ** self.bit_depth
         crushed = np.round(x * levels) / levels
 
-        # --- Sample rate reduction ---
+        # --- Sample rate reduction (vectorized) ---
         step = max(1, int(self.sample_rate / self.sample_rate_reduction))
-        hold = self.prev_sample.copy()
+        start_phase = int(self.phase)
+        indices = (np.arange(frames) + start_phase) // step
 
-        for i in range(frames):
-            if int(self.phase) % step == 0:
-                hold = crushed[i]
-            y[i] = hold
-            self.phase += 1
+        # take first sample in each step
+        unique_idx, first_indices = np.unique(indices, return_index=True)
+        hold_samples = crushed[first_indices]
 
-        self.prev_sample = hold
-        self.phase %= step
+        # Clip indices to avoid out-of-bounds
+        indices = np.clip(indices, 0, len(hold_samples) - 1)
+
+        y = hold_samples[indices.astype(int)]
+
+        # Save state
+        self.prev_sample = y[-1]
+        self.phase = (start_phase + frames) % step
 
         return y.astype(np.float32)
 
