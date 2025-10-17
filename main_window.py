@@ -428,7 +428,7 @@ class WorkspaceView(QGraphicsView):
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
+    """Main application window with threaded real-time audio generation using a ring buffer."""
     def __init__(self):
         super().__init__()
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
@@ -448,27 +448,90 @@ class MainWindow(QMainWindow):
         # Toolbar manager
         self.toolbar_manager = ToolbarManager(self)
 
-        # Start audio output
+        # --- Ring buffer configuration ---
+        self.ring_size = 8  # Number of blocks ahead to prefill
+        self.ring_buffer = np.zeros((self.ring_size, self.block_size, 2), dtype=np.float32)
+        self.write_index = 0  # Worker writes here
+        self.read_index = 0   # Callback reads here
+        self.available_blocks = 0
+        self._buffer_lock = threading.Lock()
+
+        # Stop signal for worker
+        self._stop_event = threading.Event()
+
+        # --- Background worker thread ---
+        self._worker_thread = threading.Thread(target=self._audio_worker_loop, daemon=True)
+        self._worker_thread.start()
+
+        # --- Start audio output ---
         self.stream = sd.OutputStream(
             channels=2,
             samplerate=self.sample_rate,
             blocksize=self.block_size,
             callback=self.audio_callback,
-            dtype="float32"
+            dtype="float32",
         )
         self.stream.start()
 
-    def audio_callback(self, outdata, frames, time, status):
+    # ---------- Worker Thread ----------
+    def _audio_worker_loop(self):
+        """Continuously fill the ring buffer with precomputed audio blocks."""
+        while not self._stop_event.is_set():
+            # Only fill if there's space
+            if self.available_blocks < self.ring_size:
+                block = self._generate_mix_block(self.block_size)
+                # Copy into ring buffer
+                with self._buffer_lock:
+                    np.copyto(self.ring_buffer[self.write_index], block)
+                    self.write_index = (self.write_index + 1) % self.ring_size
+                    self.available_blocks = min(self.available_blocks + 1, self.ring_size)
+            else:
+                # Ring buffer full, yield CPU
+                time.sleep(0.001)
+
+    # ---------- Mixing ----------
+    def _generate_mix_block(self, frames: int) -> np.ndarray:
+        """Generate a single block of mixed audio from endpoints."""
         if not self.endpoints:
-            outdata.fill(0)
-            return
+            return np.zeros((frames, 2), dtype=np.float32)
 
         mix = np.zeros((frames, 2), dtype=np.float32)
         for endpoint in self.endpoints:
-            audio = endpoint.generate(frames)
+            try:
+                audio = endpoint.generate(frames)
+            except Exception:
+                continue
             if audio is not None:
-                mix += audio
-        outdata[:] = np.clip(mix, -1.0, 1.0)
+                n = min(audio.shape[0], frames)
+                mix[:n] += audio[:n]
+
+        np.clip(mix, -1.0, 1.0, out=mix)
+        return mix
+
+    # ---------- Audio Callback ----------
+    def audio_callback(self, outdata, frames, time, status):
+        """Real-time audio callback reads the next available block from the ring buffer."""
+        try:
+            with self._buffer_lock:
+                if self.available_blocks > 0:
+                    np.copyto(outdata, self.ring_buffer[self.read_index])
+                    self.read_index = (self.read_index + 1) % self.ring_size
+                    self.available_blocks -= 1
+                else:
+                    # Buffer underrun
+                    outdata.fill(0)
+        except Exception:
+            outdata.fill(0)
+
+    # ---------- Cleanup ----------
+    def closeEvent(self, event):
+        """Stop worker and audio stream."""
+        self._stop_event.set()
+        if hasattr(self, "stream") and self.stream:
+            self.stream.stop()
+            self.stream.close()
+        super().closeEvent(event)
+
     
     def save_layout(self, path: str):
         """Save all modules, nodes, and connections to a .layout JSON file."""
