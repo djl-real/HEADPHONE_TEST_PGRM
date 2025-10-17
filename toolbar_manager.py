@@ -118,7 +118,7 @@ class ToolbarManager:
         file_path, _ = QFileDialog.getSaveFileName(
             self.main_window,
             "Save Layout",
-            "",
+            "./layouts",
             "Layout Files (*.layout)"
         )
         if file_path:
@@ -131,7 +131,7 @@ class ToolbarManager:
         file_path, _ = QFileDialog.getOpenFileName(
             self.main_window,
             "Load Layout",
-            "",
+            "./layouts",
             "Layout Files (*.layout)"
         )
         if file_path:

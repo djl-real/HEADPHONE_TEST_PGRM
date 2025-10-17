@@ -31,14 +31,14 @@
             "id": "2407805459664",
             "type": "Endpoint",
             "pos": [
-                -71.29224999999997,
-                873.8371249999994
+                1427.061671195652,
+                80.78715516304308
             ],
             "state": {
                 "input_count": 1,
                 "output_count": 0,
-                "volume_db": -32.3,
-                "muted": false
+                "volume_db": -2.5999999999999943,
+                "muted": true
             }
         },
         {
@@ -64,20 +64,6 @@
             "state": {
                 "input_count": 0,
                 "output_count": 1
-            }
-        },
-        {
-            "id": "2407805495376",
-            "type": "Endpoint",
-            "pos": [
-                -74.0,
-                442.0
-            ],
-            "state": {
-                "input_count": 1,
-                "output_count": 0,
-                "volume_db": -43.1,
-                "muted": false
             }
         },
         {
@@ -110,32 +96,18 @@
             "id": "2407805494736",
             "type": "Wave",
             "pos": [
-                -766.0,
-                527.0
+                -754.0975,
+                533.6125
             ],
             "state": {
                 "input_count": 0,
                 "output_count": 1,
-                "frequency": 677.6752160719981,
-                "target_frequency": 677.6883122784051,
+                "frequency": 482.9457358665542,
+                "target_frequency": 447.74422771366795,
                 "amplitude": 0.5,
                 "wave_type": "Triangle",
                 "freq_smooth_factor": 0.002,
-                "phase": 0.05627465073456328
-            }
-        },
-        {
-            "id": "2407805494416",
-            "type": "Endpoint",
-            "pos": [
-                127.0,
-                77.0
-            ],
-            "state": {
-                "input_count": 1,
-                "output_count": 0,
-                "volume_db": -32.3,
-                "muted": false
+                "phase": 0.18581326400592957
             }
         },
         {
@@ -221,21 +193,7 @@
                 "amplitude": 0.5,
                 "wave_type": "Sawtooth",
                 "freq_smooth_factor": 0.016,
-                "phase": 0.1624124251847192
-            }
-        },
-        {
-            "id": "2407805330032",
-            "type": "Endpoint",
-            "pos": [
-                568.0,
-                -258.0
-            ],
-            "state": {
-                "input_count": 1,
-                "output_count": 0,
-                "volume_db": -33.199999999999996,
-                "muted": false
+                "phase": 0.7832012801415864
             }
         },
         {
@@ -668,10 +626,36 @@
                         40
                     ]
                 ],
-                "seq_index": 51,
-                "block_progress": 2560,
+                "seq_index": 45,
+                "block_progress": 5120,
                 "applied": true,
                 "halt_enabled": false
+            }
+        },
+        {
+            "id": "1823766483632",
+            "type": "Sum",
+            "pos": [
+                687.0821499999998,
+                42.62273125000007
+            ],
+            "state": {
+                "input_count": 4,
+                "output_count": 1,
+                "input_db": [
+                    -24.200000000000003,
+                    -21.5,
+                    -19.699999999999996,
+                    -22.4
+                ],
+                "master_db": -17.000000000000007,
+                "input_muted": [
+                    false,
+                    false,
+                    false,
+                    false
+                ],
+                "master_muted": false
             }
         }
     ],
@@ -690,48 +674,12 @@
         },
         {
             "from": {
-                "module_id": "2407805496976",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2407805459664",
-                "node_index": 0,
-                "type": "input"
-            }
-        },
-        {
-            "from": {
                 "module_id": "2407805332384",
                 "node_index": 0,
                 "type": "output"
             },
             "to": {
                 "module_id": "2407805496976",
-                "node_index": 0,
-                "type": "input"
-            }
-        },
-        {
-            "from": {
-                "module_id": "2407805332048",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2407805495376",
-                "node_index": 0,
-                "type": "input"
-            }
-        },
-        {
-            "from": {
-                "module_id": "2407805495056",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2407805330032",
                 "node_index": 0,
                 "type": "input"
             }
@@ -756,18 +704,6 @@
             },
             "to": {
                 "module_id": "2407805332048",
-                "node_index": 0,
-                "type": "input"
-            }
-        },
-        {
-            "from": {
-                "module_id": "2407805494096",
-                "node_index": 0,
-                "type": "output"
-            },
-            "to": {
-                "module_id": "2407805494416",
                 "node_index": 0,
                 "type": "input"
             }
@@ -829,6 +765,66 @@
             "to": {
                 "module_id": "2407805331376",
                 "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1823766483632",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805459664",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805495056",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1823766483632",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805494096",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1823766483632",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805332048",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1823766483632",
+                "node_index": 2,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805496976",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1823766483632",
+                "node_index": 3,
                 "type": "input"
             }
         }
