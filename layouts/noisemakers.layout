@@ -1,0 +1,836 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2407805463008",
+            "type": "Endpoint",
+            "pos": [
+                1111.4999999999998,
+                802.9999999999995
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -23.299999999999997,
+                "muted": false
+            }
+        },
+        {
+            "id": "2407805497296",
+            "type": "Music",
+            "pos": [
+                491.64999999999986,
+                815.6499999999997
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2407805459664",
+            "type": "Endpoint",
+            "pos": [
+                -71.29224999999997,
+                873.8371249999994
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -32.3,
+                "muted": false
+            }
+        },
+        {
+            "id": "2407805496976",
+            "type": "Pan",
+            "pos": [
+                -380.02987499999983,
+                1003.1114999999994
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": 0.53
+            }
+        },
+        {
+            "id": "2407805332384",
+            "type": "Soundboard",
+            "pos": [
+                -994.4633749999996,
+                797.7933749999995
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2407805495376",
+            "type": "Endpoint",
+            "pos": [
+                -74.0,
+                442.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -43.1,
+                "muted": false
+            }
+        },
+        {
+            "id": "2407805495056",
+            "type": "Pan",
+            "pos": [
+                297.0,
+                -134.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": 0.79
+            }
+        },
+        {
+            "id": "2407805332048",
+            "type": "Pan",
+            "pos": [
+                -370.0,
+                535.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": -1.0
+            }
+        },
+        {
+            "id": "2407805494736",
+            "type": "Wave",
+            "pos": [
+                -766.0,
+                527.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "frequency": 677.6752160719981,
+                "target_frequency": 677.6883122784051,
+                "amplitude": 0.5,
+                "wave_type": "Triangle",
+                "freq_smooth_factor": 0.002,
+                "phase": 0.05627465073456328
+            }
+        },
+        {
+            "id": "2407805494416",
+            "type": "Endpoint",
+            "pos": [
+                127.0,
+                77.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -32.3,
+                "muted": false
+            }
+        },
+        {
+            "id": "2407805494096",
+            "type": "Bandpass",
+            "pos": [
+                -395.0,
+                121.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "lp_freq": 5950,
+                "hp_freq": 1
+            }
+        },
+        {
+            "id": "2407805493776",
+            "type": "Static",
+            "pos": [
+                -652.0,
+                198.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2407805331712",
+            "type": "Bandpass",
+            "pos": [
+                -699.0,
+                -37.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "lp_freq": 16150,
+                "hp_freq": 4500
+            }
+        },
+        {
+            "id": "2407805331376",
+            "type": "Crossfade",
+            "pos": [
+                -279.0,
+                -171.0
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.37
+            }
+        },
+        {
+            "id": "2407805331040",
+            "type": "Static",
+            "pos": [
+                -997.0,
+                -44.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2407805330704",
+            "type": "Wave",
+            "pos": [
+                -704.45,
+                -311.29999999999995
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "frequency": 1552.4942332573764,
+                "target_frequency": 1552.4942332573835,
+                "amplitude": 0.5,
+                "wave_type": "Sawtooth",
+                "freq_smooth_factor": 0.016,
+                "phase": 0.1624124251847192
+            }
+        },
+        {
+            "id": "2407805330032",
+            "type": "Endpoint",
+            "pos": [
+                568.0,
+                -258.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -33.199999999999996,
+                "muted": false
+            }
+        },
+        {
+            "id": "2407805328688",
+            "type": "Morse",
+            "pos": [
+                40.0,
+                -181.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "text": "PUBLIC ACCESS RADIO",
+                "speed_units_per_sec": 20,
+                "sequence": [
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        false,
+                        28
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        false,
+                        28
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        40
+                    ]
+                ],
+                "seq_index": 51,
+                "block_progress": 2560,
+                "applied": true,
+                "halt_enabled": false
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2407805497296",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805463008",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805496976",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805459664",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805332384",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805496976",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805332048",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805495376",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805495056",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805330032",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805328688",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805495056",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805494736",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805332048",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805494096",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805494416",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805493776",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805494096",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805331712",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805331376",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805331040",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805331712",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805331376",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805328688",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2407805330704",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2407805331376",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}

@@ -16,6 +16,7 @@ from modules.reverb import Reverb
 from modules.bitcrusher import Bitcrusher
 from modules.sum import Sum
 from modules.split import Split
+from modules.morse import Morse
 from ui_elements import ModuleItem
 
 
@@ -65,7 +66,8 @@ class ToolbarManager:
                 ("Hold", Hold),
                 ("Bitcrusher", Bitcrusher),
                 ("Reverb", Reverb),
-                ("Bandpass", Bandpass)
+                ("Bandpass", Bandpass),
+                ("Morse", Morse)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
