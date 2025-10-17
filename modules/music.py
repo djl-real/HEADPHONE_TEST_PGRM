@@ -133,23 +133,38 @@ class Music(AudioModule):
 
     def generate(self, frames: int) -> np.ndarray:
         out = np.zeros((frames, 2), dtype=np.float32)
-        if self.current_index is None or self.current_index >= len(self.songs):
-            return out
-        if not self.playing:
+        if self.current_index is None or not self.playing:
             return out
 
         track = self.play_buffer
-        for i in range(frames):
-            idx = int(self.playhead)
-            if idx < 0 or idx >= len(track) - 1:
-                self.playing = False
-                break
-            next_idx = idx + (1 if not self.reverse else -1)
-            frac = abs(self.playhead - idx)
-            out[i] = (1 - frac) * track[idx] + frac * track[next_idx]
-            self.playhead += self.pitch * (-1 if self.reverse else 1)
+        n_samples = len(track)
+        if n_samples < 2:
+            return out
 
-        return out.astype(np.float32)
+        # Compute all fractional indices for this block
+        step = self.pitch * (-1 if self.reverse else 1)
+        indices = self.playhead + step * np.arange(frames)
+        
+        # Clamp indices to track boundaries
+        valid_mask = (indices >= 0) & (indices < n_samples - 1)
+        indices_clamped = np.clip(indices, 0, n_samples - 2)
+
+        # Vectorized linear interpolation
+        idx_floor = np.floor(indices_clamped).astype(int)
+        frac = indices_clamped - idx_floor
+        out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
+                        frac[valid_mask, None] * track[idx_floor[valid_mask] + 1]
+
+        # Update playhead for next block
+        self.playhead += step * frames
+
+        # Stop if reached end or beginning
+        if self.playhead >= n_samples - 1 or self.playhead <= 0:
+            self.playing = False
+            self.playhead = max(0, min(self.playhead, n_samples - 1))
+
+        return out
+
 
     # --- UI ---
     def get_ui(self) -> QWidget:
