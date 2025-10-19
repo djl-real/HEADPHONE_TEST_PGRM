@@ -17,6 +17,8 @@ from modules.bitcrusher import Bitcrusher
 from modules.sum import Sum
 from modules.split import Split
 from modules.morse import Morse
+from modules.reversedelay import ReverseDelay
+from modules.samplehold import SampleHoldMod
 from ui_elements import ModuleItem
 
 
@@ -67,7 +69,9 @@ class ToolbarManager:
                 ("Bitcrusher", Bitcrusher),
                 ("Reverb", Reverb),
                 ("Bandpass", Bandpass),
-                ("Morse", Morse)
+                ("Morse", Morse),
+                ("ReverseDelay", ReverseDelay),
+                ("SampleHoldMod", SampleHoldMod)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
