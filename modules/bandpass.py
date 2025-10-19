@@ -62,11 +62,11 @@ class RangeSlider(QWidget):
         x = event.position().x()
         val = self.pos_to_value(x)
         if self.dragging_low:
-            self.low = max(self.minimum, min(val, self.high))
+            self.low = max(self.minimum, min(val, self.high - 1))
             self.rangeChanged.emit(self.low, self.high)
             self.update()
         elif self.dragging_high:
-            self.high = min(self.maximum, max(val, self.low))
+            self.high = min(self.maximum, max(val, self.low + 1))
             self.rangeChanged.emit(self.low, self.high)
             self.update()
 
@@ -88,24 +88,28 @@ class Bandpass(AudioModule):
         self.zi = None  # per-channel state
         self._update_coeffs()
 
-    def _update_coeffs(self):
+    def _update_coeffs(self, num_channels=2):
         nyq = 0.5 * self.sample_rate
         low = max(self.hp_freq / nyq, 1e-5)
         high = min(self.lp_freq / nyq, 0.99999)
         self.b, self.a = butter(N=2, Wn=[low, high], btype='band')
-        self.zi = None  # will initialize per channel at first generate
+
+        # initialize per-channel filter state
+        self.zi = [lfilter_zi(self.b, self.a) * 0.0 for _ in range(num_channels)]
 
     def generate(self, frames: int) -> np.ndarray:
         if self.input_node is None:
             return np.zeros((frames, 2), dtype=np.float32)
 
         x = self.input_node.receive(frames)
+        if x is None or len(x) == 0:
+            return np.zeros((frames, 2), dtype=np.float32)
+
+        # Make sure zi has correct number of channels
+        if self.zi is None or len(self.zi) != x.shape[1]:
+            self._update_coeffs(num_channels=x.shape[1])
+
         y = np.zeros_like(x)
-
-        # initialize per-channel filter state on first run
-        if self.zi is None:
-            self.zi = [lfilter_zi(self.b, self.a) * 0.0 for _ in range(x.shape[1])]
-
         for ch in range(x.shape[1]):
             y[:, ch], self.zi[ch] = lfilter(self.b, self.a, x[:, ch], zi=self.zi[ch])
 
@@ -126,10 +130,11 @@ class Bandpass(AudioModule):
             self.hp_freq = low
             self.lp_freq = high
             label.setText(f"Bandpass: {self.hp_freq:.0f} Hz – {self.lp_freq:.0f} Hz")
-            self._update_coeffs()  # recompute filter
+            # Recompute filter with same number of channels
+            num_channels = self.zi[0].shape[0] if self.zi else 2
+            self._update_coeffs(num_channels=num_channels)
 
         slider.rangeChanged.connect(on_range_change)
-
         return widget
 
     # ---------------- Serialization ----------------

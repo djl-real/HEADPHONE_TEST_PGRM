@@ -10,8 +10,10 @@ from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
 
+from PyQt6.QtWidgets import QCheckBox, QHBoxLayout
+
 class TTS(AudioModule):
-    """Text-to-speech generator module with voice and pitch control."""
+    """Text-to-speech generator module with voice, pitch, and loop control."""
 
     def __init__(self, sample_rate=44100):
         super().__init__(input_count=0, output_count=1)
@@ -24,10 +26,8 @@ class TTS(AudioModule):
         self.pos = 0
         self.text = ""
         self.pitch = 1.0  # Normal pitch
+        self.loop = False  # Loop enabled/disabled
 
-    # ---------------------------
-    # AUDIO GENERATION
-    # ---------------------------
     def generate_tts_audio(self, text: str):
         """Generate TTS audio for given text and store as stereo buffer."""
         if not text.strip():
@@ -37,7 +37,6 @@ class TTS(AudioModule):
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
             path = tmpfile.name
 
-        # Create a short-lived TTS engine
         engine = pyttsx3.init()
         if self.current_voice:
             engine.setProperty("voice", self.current_voice)
@@ -53,7 +52,6 @@ class TTS(AudioModule):
             del engine
             gc.collect()
 
-        # Load generated audio
         try:
             data, fs = sf.read(path, dtype="float32")
             if data.ndim == 1:
@@ -84,27 +82,26 @@ class TTS(AudioModule):
             self.playing = False
 
     def generate(self, frames: int):
-        """Output current TTS buffer."""
+        """Output current TTS buffer with optional looping."""
         out = np.zeros((frames, 2), dtype=np.float32)
-
-        if not self.playing or self.pos >= len(self.buffer):
+        if not self.playing or len(self.buffer) == 0:
             return out
 
-        end = min(self.pos + frames, len(self.buffer))
-        chunk = self.buffer[self.pos:end]
-        out[:len(chunk)] = chunk
-        self.pos = end
+        remaining = len(self.buffer) - self.pos
+        to_copy = min(frames, remaining)
+        out[:to_copy] = self.buffer[self.pos:self.pos + to_copy]
+        self.pos += to_copy
 
         if self.pos >= len(self.buffer):
-            self.playing = False
+            if self.loop:
+                self.pos = 0  # restart playback
+            else:
+                self.playing = False
 
         return out
 
-    # ---------------------------
-    # UI
-    # ---------------------------
     def get_ui(self) -> QWidget:
-        """Return UI with text entry, play button, voice selection, and pitch slider."""
+        """Return UI with text entry, play/stop buttons, voice, pitch, and loop."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)
@@ -122,11 +119,11 @@ class TTS(AudioModule):
             voice_dropdown.addItem(v.name)
         layout.addWidget(voice_dropdown)
 
-        def on_voice_change(idx):
-            self.current_voice = self.voices[idx].id
-        voice_dropdown.currentIndexChanged.connect(on_voice_change)
+        voice_dropdown.currentIndexChanged.connect(
+            lambda idx: setattr(self, "current_voice", self.voices[idx].id)
+        )
 
-        # --- Pitch slider (logarithmic mapping) ---
+        # --- Pitch slider ---
         layout.addWidget(QLabel("Pitch"))
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
@@ -134,7 +131,7 @@ class TTS(AudioModule):
 
         def slider_to_pitch(val):
             s = val / 100.0
-            return 0.5 * (4 ** s)  # 0.5x – 2x pitch range
+            return 0.5 * (4 ** s)
 
         def pitch_to_slider(pitch):
             s = np.log2(pitch / 0.5) / 2
@@ -143,21 +140,35 @@ class TTS(AudioModule):
         pitch_slider.setValue(pitch_to_slider(self.pitch))
         pitch_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         pitch_slider.setTickInterval(25)
-        layout.addWidget(pitch_slider)
         pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
+        layout.addWidget(pitch_slider)
 
-        # --- Play button ---
+        # --- Play / Stop buttons + Loop checkbox ---
+        controls_layout = QHBoxLayout()
         play_btn = QPushButton("▶ Play")
-        play_btn.setFixedHeight(40)
-        layout.addWidget(play_btn)
+        stop_btn = QPushButton("■ Stop")
+        loop_checkbox = QCheckBox("Loop")
 
+        controls_layout.addWidget(play_btn)
+        controls_layout.addWidget(stop_btn)
+        controls_layout.addWidget(loop_checkbox)
+        layout.addLayout(controls_layout)
+
+        # Connect buttons
         def on_play():
             self.text = text_input.toPlainText().strip()
             self.generate_tts_audio(self.text)
 
+        def on_stop():
+            self.playing = False
+            self.pos = 0
+
         play_btn.clicked.connect(on_play)
+        stop_btn.clicked.connect(on_stop)
+        loop_checkbox.stateChanged.connect(lambda state: setattr(self, "loop", state))
 
         return widget
+
     
     # ---------------- Serialization ----------------
     def serialize(self) -> dict:
@@ -181,3 +192,4 @@ class TTS(AudioModule):
         self.pitch = state.get("pitch", 1.0)
         self.playing = state.get("playing", False)
         self.pos = state.get("pos", 0)
+
