@@ -4,7 +4,7 @@ import tempfile
 import pyttsx3
 import gc
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider
+    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
@@ -19,6 +19,7 @@ class TTS(AudioModule):
         super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
         self.voices = pyttsx3.init().getProperty("voices")
+        print(self.voices)
         self.current_voice = self.voices[0].id if self.voices else None
 
         self.buffer = np.zeros((0, 2), dtype=np.float32)
@@ -117,11 +118,15 @@ class TTS(AudioModule):
         voice_dropdown = QComboBox()
         for v in self.voices:
             voice_dropdown.addItem(v.name)
+        voice_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        voice_dropdown.setMinimumHeight(30)
         layout.addWidget(voice_dropdown)
 
-        voice_dropdown.currentIndexChanged.connect(
-            lambda idx: setattr(self, "current_voice", self.voices[idx].id)
-        )
+        # Update current voice when dropdown changes
+        def on_voice_change(idx):
+            self.current_voice = self.voices[idx].id
+        voice_dropdown.currentIndexChanged.connect(on_voice_change)
+
 
         # --- Pitch slider ---
         layout.addWidget(QLabel("Pitch"))
