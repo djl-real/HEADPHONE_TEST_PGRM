@@ -4,7 +4,7 @@ import numpy as np
 import soundfile as sf
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
-    QSlider, QAbstractItemView
+    QSlider, QAbstractItemView, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontDatabase
@@ -40,10 +40,16 @@ class Music(AudioModule):
         self.load_playlist()
 
     # --- Playlist scanning ---
-    def load_playlist(self):
+    def load_playlist(self, folder_name=None):
         """Scan playlist folder, load metadata only for responsiveness."""
-        playlist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlist"))
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlists"))
+        if folder_name:
+            playlist_dir = os.path.join(base_dir, folder_name)
+        else:
+            playlist_dir = base_dir
         os.makedirs(playlist_dir, exist_ok=True)
+
+        self.current_playlist_path = playlist_dir  # store path for audio loading
 
         self.songs.clear()
         self.song_names.clear()
@@ -85,8 +91,12 @@ class Music(AudioModule):
                 except Exception as e:
                     print(f"[Music] Failed to scan {fname}: {e}")
 
-        # Populate UI list if it exists
+        # Populate UI list
         self.populate_list_widget()
+
+        # Switch to the songs playback screen
+        if hasattr(self, "stack") and hasattr(self, "song_screen"):
+            self.stack.setCurrentWidget(self.song_screen)
 
     def populate_list_widget(self):
         """Populate the QListWidget with song display texts."""
@@ -102,7 +112,7 @@ class Music(AudioModule):
             return self.songs[index]
 
         fname = self.song_names[index]
-        path = os.path.join(os.path.dirname(__file__), "..", "playlist", fname)
+        path = os.path.join(self.current_playlist_path, fname)
         data, fs = sf.read(path, dtype="float32")
         if data.ndim == 1:
             data = np.column_stack((data, data))
@@ -169,21 +179,71 @@ class Music(AudioModule):
     # --- UI ---
     def get_ui(self) -> QWidget:
         widget = QWidget()
-        layout = QVBoxLayout(widget)
+        main_layout = QVBoxLayout(widget)
 
-        # Playlist
+        # --- Stacked widget for playlist selection + songs ---
+        self.stack = QStackedWidget()
+        main_layout.addWidget(self.stack)
+
+        # --- Playlist folder selection screen ---
+        playlists_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlists"))
+        os.makedirs(playlists_dir, exist_ok=True)
+        playlists = [f for f in sorted(os.listdir(playlists_dir)) if os.path.isdir(os.path.join(playlists_dir, f))]
+
+        playlist_screen = QWidget()
+        playlist_layout = QVBoxLayout()
+        playlist_screen.setLayout(playlist_layout)
+        playlist_layout.addWidget(QLabel("Select a Playlist:"))
+
+        for folder in playlists:
+            btn = QPushButton(folder)
+            btn.setFixedHeight(50)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #333;
+                    color: white;
+                    font-size: 16px;
+                    border-radius: 6px;
+                }
+                QPushButton:hover {
+                    background-color: #555;
+                }
+            """)
+            btn.clicked.connect(lambda _, f=folder: self.load_playlist(f))
+            playlist_layout.addWidget(btn)
+
+        playlist_layout.addStretch()
+        self.stack.addWidget(playlist_screen)
+
+        # --- Songs playback screen (current UI) ---
+        song_screen = QWidget()
+        layout = QVBoxLayout(song_screen)
+
+        # Back button
+        back_btn = QPushButton("←")
+        back_btn.setFixedHeight(20)
+        back_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #444;
+                color: white;
+                font-size: 14px;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #666;
+            }
+        """)
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))  # Go back to playlist selection screen
+        layout.addWidget(back_btn)
+
+        # Playlist QListWidget
         self.list_widget = QListWidget()
         mono_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         mono_font.setPointSize(11)
         self.list_widget.setFont(mono_font)
         self.list_widget.setMinimumWidth(350)
-        # self.list_widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
-
         layout.addWidget(QLabel("Playlist"))
         layout.addWidget(self.list_widget)
-
-        # Populate list now that the widget exists
-        self.populate_list_widget()
 
         # Buttons
         btn_layout = QHBoxLayout()
@@ -247,7 +307,7 @@ class Music(AudioModule):
         self.scrub_slider.valueChanged.connect(on_scrub)
 
         # Timer for UI updates
-        self.update_timer = QTimer(widget)
+        self.update_timer = QTimer(song_screen)
         self.update_timer.setInterval(50)
 
         def update_scrub_and_countdown():
@@ -266,6 +326,12 @@ class Music(AudioModule):
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
         self.update_timer.start()
+
+        # Add the songs playback screen to the stack
+        self.stack.addWidget(song_screen)
+
+        # Keep reference for switching to songs UI after playlist selection
+        self.song_screen = song_screen
 
         return widget
 
