@@ -1,23 +1,23 @@
-# modules/sample_hold_pitch.py
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
-from nodes import InputNode, OutputNode
 
 class SampleHoldMod(AudioModule):
     """
-    Sample & Hold Pitch Modulation
-    Produces random pitch jumps at a fixed rate.
+    FFT-based Sample & Hold Pitch Modulation.
+    Uses spectral resampling for faster, smoother pitch jumps.
     """
 
     def __init__(self, rate_hz=2.0, depth=12.0, sample_rate=48000):
         super().__init__(input_count=1, output_count=1)
-        self.rate_hz = rate_hz        # how often the pitch changes (Hz)
-        self.depth = depth            # max pitch modulation in semitones (+/-)
+        self.rate_hz = rate_hz
+        self.depth = depth
         self.sample_rate = sample_rate
         self.phase = 0.0
-        self.current_pitch_shift = 1.0  # current playback rate multiplier
+        self.current_pitch_shift = 1.0
+        self.block_size = 512  # FFT window size
+        self.buffer = np.zeros((0, 2), dtype=np.float32)
 
     def generate(self, frames: int) -> np.ndarray:
         if self.input_node is None:
@@ -27,37 +27,48 @@ class SampleHoldMod(AudioModule):
         if x is None or len(x) == 0:
             return np.zeros((frames, 2), dtype=np.float32)
 
-        output = np.zeros_like(x)
-        input_len = len(x)
+        self.buffer = np.concatenate((self.buffer, x), axis=0)
+        out_blocks = []
 
-        for i in range(frames):
-            # Update phase and pick a new random pitch every cycle
-            self.phase += self.rate_hz / self.sample_rate
+        while len(self.buffer) >= self.block_size:
+            block = self.buffer[:self.block_size]
+            self.buffer = self.buffer[self.block_size:]
+
+            # Update pitch every few blocks
+            self.phase += self.rate_hz * self.block_size / self.sample_rate
             if self.phase >= 1.0:
                 self.phase -= 1.0
                 semitone_offset = (np.random.rand() - 0.5) * self.depth
                 self.current_pitch_shift = 2 ** (semitone_offset / 12.0)
 
-            # Compute source index with fractional part
-            src_idx = i * self.current_pitch_shift
+            # FFT-based pitch shift
+            shifted = self.pitch_shift_fft(block, self.current_pitch_shift)
+            out_blocks.append(shifted)
 
-            # Clamp src_idx to last sample
-            if src_idx >= input_len - 1:
-                src_idx = input_len - 1.001  # slightly less than last index to allow interpolation
+        if len(out_blocks) == 0:
+            return np.zeros((frames, 2), dtype=np.float32)
 
-            idx0 = int(np.floor(src_idx))
-            idx1 = idx0 + 1
-            frac = src_idx - idx0
+        output = np.concatenate(out_blocks, axis=0)
+        return output[:frames].astype(np.float32)
 
-            # Linear interpolation
-            output[i] = x[idx0] * (1 - frac) + x[idx1] * frac
+    def pitch_shift_fft(self, block: np.ndarray, shift: float) -> np.ndarray:
+        """
+        Simple spectral-domain pitch shift by rescaling FFT bins.
+        """
+        n = len(block)
+        out = np.zeros_like(block)
+        for ch in range(block.shape[1]):
+            X = np.fft.rfft(block[:, ch])
+            freqs = np.fft.rfftfreq(n)
+            shifted_bins = np.interp(freqs, np.clip(freqs / shift, 0, 1), np.abs(X), left=0, right=0)
+            phase = np.angle(X)
+            Y = shifted_bins * np.exp(1j * phase)
+            y = np.fft.irfft(Y)
+            out[:, ch] = y.real
+        return out
 
-        return output.astype(np.float32)
-
-
-
+    # ---------------- UI ----------------
     def get_ui(self) -> QWidget:
-        """Return a QWidget for rate and depth sliders."""
         widget = QWidget()
         layout = QVBoxLayout()
         widget.setLayout(layout)

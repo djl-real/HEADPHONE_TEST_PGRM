@@ -1,5 +1,6 @@
 # main_window.py
 import sys
+import os, psutil
 import time
 import numpy as np
 import sounddevice as sd
@@ -431,6 +432,10 @@ class MainWindow(QMainWindow):
     """Main application window with threaded real-time audio generation using a ring buffer."""
     def __init__(self):
         super().__init__()
+
+        p = psutil.Process(os.getpid())
+        p.nice(psutil.HIGH_PRIORITY_CLASS)
+
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
         self.resize(1200, 800)
 
@@ -441,7 +446,7 @@ class MainWindow(QMainWindow):
 
         # Audio backend
         self.sample_rate = 44100
-        self.block_size = 512
+        self.block_size = 2048
         self.modules: list[AudioModule] = []
         self.endpoints: list[AudioModule] = []
 
@@ -487,7 +492,7 @@ class MainWindow(QMainWindow):
                     self.available_blocks = min(self.available_blocks + 1, self.ring_size)
             else:
                 # Ring buffer full, yield CPU
-                time.sleep(0.001)
+                threading.Event().wait(0.0005)
 
     # ---------- Mixing ----------
     def _generate_mix_block(self, frames: int) -> np.ndarray:
