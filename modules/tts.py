@@ -19,7 +19,6 @@ class TTS(AudioModule):
         super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
         self.voices = pyttsx3.init().getProperty("voices")
-        print(self.voices)
         self.current_voice = self.voices[0].id if self.voices else None
 
         self.buffer = np.zeros((0, 2), dtype=np.float32)

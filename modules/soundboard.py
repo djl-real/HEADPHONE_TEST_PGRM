@@ -13,6 +13,8 @@ from audio_module import AudioModule
 class Soundboard(AudioModule):
     """Soundboard module with category-based browsing and playback."""
 
+    SUPPORTED_EXTENSIONS = (".wav", ".flac", ".ogg", ".aiff", ".aif", ".mp3")
+
     def __init__(self, available_outputs=None):
         super().__init__(input_count=0, output_count=1)
         self.fs = 44100
@@ -26,7 +28,7 @@ class Soundboard(AudioModule):
     # SOUND LOADING
     # ---------------------------
     def load_all_sounds(self):
-        """Scan /sounds directory and load all categories and WAV files."""
+        """Scan /sounds directory and load all supported audio files."""
         base_dir = os.path.join(os.path.dirname(__file__), "..", "sounds")
         base_dir = os.path.abspath(base_dir)
 
@@ -41,20 +43,30 @@ class Soundboard(AudioModule):
 
             cat_sounds = {}
             for fname in os.listdir(cat_path):
-                if fname.lower().endswith(".wav"):
-                    path = os.path.join(cat_path, fname)
-                    try:
-                        data, fs = sf.read(path, dtype="float32")
-                        if data.ndim == 1:
-                            data = np.column_stack((data, data))
-                        if fs != self.fs:
-                            ratio = self.fs / fs
-                            idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
-                            idx = idx[idx < len(data)]
-                            data = data[idx]
-                        cat_sounds[fname] = data
-                    except Exception as e:
-                        print(f"[Soundboard] Failed to load {fname}: {e}")
+                if not fname.lower().endswith(self.SUPPORTED_EXTENSIONS):
+                    continue
+
+                path = os.path.join(cat_path, fname)
+                try:
+                    data, fs = sf.read(path, dtype="float32")
+
+                    # Convert to stereo if mono
+                    if data.ndim == 1:
+                        data = np.column_stack((data, data))
+
+                    # Resample to target sample rate
+                    if fs != self.fs:
+                        ratio = self.fs / fs
+                        idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
+                        idx = idx[idx < len(data)]
+                        data = data[idx]
+
+                    cat_sounds[fname] = data
+                except RuntimeError:
+                    # skip unsupported files
+                    continue
+                except Exception as e:
+                    print(f"[Soundboard] Failed to load {fname}: {e}")
 
             if cat_sounds:
                 self.sounds[category] = cat_sounds
