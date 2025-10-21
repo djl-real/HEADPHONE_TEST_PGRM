@@ -1,7 +1,7 @@
 # modules/endpoint.py
 import numpy as np
 import traceback
-from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout, QPushButton
+from PyQt6.QtWidgets import QWidget, QSlider, QVBoxLayout, QLabel, QHBoxLayout, QPushButton, QLineEdit
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
@@ -18,6 +18,7 @@ class Endpoint(AudioModule):
         super().__init__(input_count=1, output_count=0)
         self.volume_db = volume_db
         self.muted = False
+        self.nickname = ""  # 🆕 Initialize nickname attribute
 
     def generate(self, frames: int) -> np.ndarray:
         # Always receive from input, even when muted
@@ -40,6 +41,19 @@ class Endpoint(AudioModule):
     def get_ui(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
+
+        # nickname box
+        self.nickname_box = QLineEdit()
+        self.nickname_box.setPlaceholderText("Enter nickname...")
+        self.nickname_box.setText(self.nickname)
+        self.nickname_box.setFixedWidth(100)
+        self.nickname_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        nick_layout = QHBoxLayout()
+        nick_layout.addStretch()
+        nick_layout.addWidget(self.nickname_box)
+        nick_layout.addStretch()
+        layout.addLayout(nick_layout)
 
         # Volume label
         self.label = QLabel(f"Volume: {self.volume_db:.1f} dB")
@@ -93,7 +107,12 @@ class Endpoint(AudioModule):
 
         self.slider.valueChanged.connect(on_value_change)
 
+        widget.setMaximumWidth(120)
+
         return widget
+    
+    def on_nickname_changed(self, text: str):
+        self.nickname = text
 
         # ---------------- Serialization ----------------
     def serialize(self) -> dict:
@@ -102,6 +121,7 @@ class Endpoint(AudioModule):
         data.update({
             "volume_db": self.volume_db,
             "muted": self.muted,
+            "nickname": self.nickname,  # 🆕 Save nickname
         })
         return data
 
@@ -110,3 +130,8 @@ class Endpoint(AudioModule):
         super().deserialize(state)
         self.volume_db = state.get("volume_db", DB_MIN)
         self.muted = state.get("muted", False)
+        self.nickname = state.get("nickname", "")  # 🆕 Restore nickname
+
+        # Restore UI if it exists
+        if hasattr(self, "nickname_box"):
+            self.nickname_box.setText(self.nickname)
