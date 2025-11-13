@@ -19,6 +19,7 @@ from modules.split import Split
 from modules.morse import Morse
 from modules.reversedelay import ReverseDelay
 from modules.samplehold import SampleHoldMod
+from modules.multiply import Multiply
 from ui_elements import ModuleItem
 
 
@@ -76,6 +77,7 @@ class ToolbarManager:
             "Routing": [
                 ("Endpoint", Endpoint),
                 ("Crossfade", Crossfade),
+                ("Multiply", Multiply),
                 ("Sum", Sum),
                 ("Split", Split)
             ],
