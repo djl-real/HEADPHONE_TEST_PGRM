@@ -20,6 +20,7 @@ from modules.morse import Morse
 from modules.reversedelay import ReverseDelay
 from modules.samplehold import SampleHoldMod
 from modules.multiply import Multiply
+from modules.convolve import Convolve
 from ui_elements import ModuleItem
 
 
@@ -72,12 +73,13 @@ class ToolbarManager:
                 ("Bandpass", Bandpass),
                 ("Morse", Morse),
                 ("ReverseDelay", ReverseDelay),
-                ("SampleHoldMod", SampleHoldMod)
+                ("SampleHoldMod", SampleHoldMod),
+                ("Multiply", Multiply),
+                ("Convolve", Convolve),
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
                 ("Crossfade", Crossfade),
-                ("Multiply", Multiply),
                 ("Sum", Sum),
                 ("Split", Split)
             ],

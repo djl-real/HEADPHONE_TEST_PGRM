@@ -12,14 +12,14 @@ class Multiply(AudioModule):
     def __init__(self, sample_rate=44100):
         super().__init__(input_count=2, output_count=1)
         self.sample_rate = sample_rate
-        self.crossfade = 0.5  # 0 = full input 1, 1 = full input 2
+        self.crossfade = 1.0  # 0 = full input 1, 1 = full input 2
 
     def generate(self, frames: int) -> np.ndarray:
         # Receive inputs
         x1 = self.input_nodes[0].receive(frames) if self.input_nodes[0] else np.zeros((frames, 2))
         x2 = self.input_nodes[1].receive(frames) if self.input_nodes[1] else np.zeros((frames, 2))
 
-        out =  x1 * x2
+        out =  (x1 + 1 - self.crossfade) * (x2 - 1 + self.crossfade)
         return out.astype(np.float32)
 
     def get_ui(self) -> QWidget:
@@ -28,7 +28,7 @@ class Multiply(AudioModule):
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        label = QLabel(f"This slider doesnt do anything: {self.crossfade:.2f}")
+        label = QLabel(f"integration: {self.crossfade:.2f}")
         layout.addWidget(label)
 
         slider = QSlider(Qt.Orientation.Horizontal)
@@ -39,7 +39,7 @@ class Multiply(AudioModule):
 
         def on_slider(val):
             self.crossfade = val / 1000.0
-            label.setText(f"This slider doesnt do anything: {self.crossfade:.2f}")
+            label.setText(f"integration: {self.crossfade:.2f}")
 
         slider.valueChanged.connect(on_slider)
         return widget
