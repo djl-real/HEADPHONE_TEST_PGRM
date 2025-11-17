@@ -1,0 +1,544 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2460560527184",
+            "type": "Endpoint",
+            "pos": [
+                2578.1387305559238,
+                -1251.568048981387
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -8.0,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460560436880",
+            "type": "Pan",
+            "pos": [
+                2264.7381467065225,
+                -1135.039834950919
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": 1.0
+            }
+        },
+        {
+            "id": "2460560436560",
+            "type": "Soundboard",
+            "pos": [
+                1724.849738923174,
+                -1334.7002888872614
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460563836608",
+            "type": "Pan",
+            "pos": [
+                2259.0588043478256,
+                -491.9167816635161
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": -1.0
+            }
+        },
+        {
+            "id": "2460559847456",
+            "type": "Endpoint",
+            "pos": [
+                2555.1296266540653,
+                -594.3667344045368
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -10.700000000000003,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460563836272",
+            "type": "Soundboard",
+            "pos": [
+                1721.97695652174,
+                -695.735070888469
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460559848272",
+            "type": "Endpoint",
+            "pos": [
+                1536.3031096408315,
+                -1170.8741115311907
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -3.5,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460563607280",
+            "type": "Music",
+            "pos": [
+                991.8796691871455,
+                -1246.488478260869
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460563610160",
+            "type": "Endpoint",
+            "pos": [
+                1520.6535699021945,
+                -667.5236677077339
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -9.799999999999997,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460563609008",
+            "type": "Music",
+            "pos": [
+                999.9137819511791,
+                -744.937709788773
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460560435920",
+            "type": "Crossfade",
+            "pos": [
+                -421.0429996111527,
+                -361.2155337151555
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.117
+            }
+        },
+        {
+            "id": "2460560435600",
+            "type": "Static",
+            "pos": [
+                -708.3222058510539,
+                -247.75044735764334
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460561149584",
+            "type": "Endpoint",
+            "pos": [
+                123.56151877415539,
+                -664.0190563115007
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -6.200000000000003,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460560435280",
+            "type": "Multiply",
+            "pos": [
+                -184.0988879619556,
+                -553.1083568070644
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.5
+            }
+        },
+        {
+            "id": "2460561146240",
+            "type": "Music",
+            "pos": [
+                -1150.7553905541085,
+                -613.4991024647161
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460561147760",
+            "type": "Endpoint",
+            "pos": [
+                1157.2030436880002,
+                605.8532988906902
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": 3.700000000000003,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460563835600",
+            "type": "Wave",
+            "pos": [
+                -627.8796861703129,
+                -614.1058367278722
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "frequency": 66.94758232250821,
+                "target_frequency": 32.4362019471786,
+                "amplitude": 0.5,
+                "wave_type": "Sine",
+                "freq_smooth_factor": 0.001,
+                "phase": 0.8412724214904626
+            }
+        },
+        {
+            "id": "2460561147152",
+            "type": "Music",
+            "pos": [
+                74.07789891167283,
+                501.63488399583844
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460560433360",
+            "type": "Endpoint",
+            "pos": [
+                1181.775522717138,
+                68.13592198953648
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": 4.599999999999994,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460560433040",
+            "type": "Music",
+            "pos": [
+                73.52597229386205,
+                -55.641367605268954
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460563834592",
+            "type": "Bandpass",
+            "pos": [
+                -766.1412321036156,
+                -1010.1304246059776
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "lp_freq": 5787,
+                "hp_freq": 4
+            }
+        },
+        {
+            "id": "2460563834256",
+            "type": "Static",
+            "pos": [
+                -1106.2743791406829,
+                -958.5811519833096
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460563833920",
+            "type": "Endpoint",
+            "pos": [
+                27.053912545333077,
+                -1273.4165157290843
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -1.7000000000000028,
+                "muted": false
+            }
+        },
+        {
+            "id": "2460084582256",
+            "type": "Music",
+            "pos": [
+                -959.6854911650108,
+                -1543.347076204564
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2460084569488",
+            "type": "Multiply",
+            "pos": [
+                -263.80285781249984,
+                -1164.9565115624996
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.482
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2460560433040",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560433360",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460560436880",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560527184",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460560436560",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560436880",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563836608",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460559847456",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563836272",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460563836608",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563607280",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460559848272",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563609008",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460563610160",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460560435600",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560435920",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460560435920",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560435280",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460561146240",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560435920",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460560435280",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460561149584",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563835600",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460560435280",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460561147152",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460561147760",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460084569488",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460563833920",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563834592",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460084569488",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460563834256",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460563834592",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2460084582256",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2460084569488",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
