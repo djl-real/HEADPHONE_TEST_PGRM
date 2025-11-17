@@ -9,7 +9,7 @@ import threading
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
-    QGraphicsItem, QGraphicsRectItem, QPinchGesture, QFileDialog, QMessageBox
+    QGraphicsItem, QGraphicsRectItem, QPinchGesture, QFileDialog, QMessageBox, QWidget, QVBoxLayout
 )
 from PyQt6.QtGui import (
     QBrush, QColor, QWheelEvent, QPainter, QPen
@@ -21,7 +21,10 @@ from PyQt6.QtCore import (
 from audio_module import AudioModule
 from toolbar_manager import ToolbarManager
 from ui_elements import ModuleItem, NodeCircle, ConnectionPath
+from mixer import Mixer
 
+def db_to_linear(db_value: float) -> float:
+    return 10.0 ** (db_value / 20.0)
 
 class WorkspaceScene(QGraphicsScene):
     """Custom scene with background grid only."""
@@ -453,6 +456,15 @@ class MainWindow(QMainWindow):
         # Toolbar manager
         self.toolbar_manager = ToolbarManager(self)
 
+        # Mixer
+        self.mixer = Mixer(self)
+        dock = QWidget()
+        dock_layout = QVBoxLayout(dock)
+        dock_layout.setContentsMargins(0, 0, 0, 0)
+        dock_layout.addWidget(self.view)
+        dock_layout.addWidget(self.mixer)
+        self.setCentralWidget(dock)
+
         # --- Ring buffer configuration ---
         self.ring_size = 8  # Number of blocks ahead to prefill
         self.ring_buffer = np.zeros((self.ring_size, self.block_size, 2), dtype=np.float32)
@@ -511,6 +523,7 @@ class MainWindow(QMainWindow):
                 mix[:n] += audio[:n]
 
         np.clip(mix, -1.0, 1.0, out=mix)
+        mix *= db_to_linear(self.mixer.master_volume_db)
         return mix
 
     # ---------- Audio Callback ----------
@@ -635,6 +648,7 @@ class MainWindow(QMainWindow):
 
             if "Endpoint" in mod_type:
                 self.endpoints.append(module)
+                self.mixer.add_endpoint(module)
             else:
                 self.modules.append(module)
 
