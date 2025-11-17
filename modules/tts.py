@@ -1,23 +1,26 @@
+import os
 import numpy as np
 import soundfile as sf
 import tempfile
 import pyttsx3
 import gc
+
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider, QSizePolicy
+    QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider,
+    QSizePolicy, QListWidget, QHBoxLayout, QCheckBox
 )
 from PyQt6.QtCore import Qt
+
 from audio_module import AudioModule
 
 
-from PyQt6.QtWidgets import QCheckBox, QHBoxLayout
-
 class TTS(AudioModule):
-    """Text-to-speech generator module with voice, pitch, and loop control."""
+    """Text-to-speech generator module with voice, pitch, loop, and file presets."""
 
-    def __init__(self, sample_rate=44100):
+    def __init__(self, sample_rate=44100, tts_folder="TTS"):
         super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
+
         self.voices = pyttsx3.init().getProperty("voices")
         self.current_voice = self.voices[0].id if self.voices else None
 
@@ -25,15 +28,45 @@ class TTS(AudioModule):
         self.playing = False
         self.pos = 0
         self.text = ""
-        self.pitch = 1.0  # Normal pitch
-        self.loop = False  # Loop enabled/disabled
+        self.pitch = 1.0
+        self.loop = False
 
+        # --- NEW ---
+        self.tts_folder = tts_folder
+        self.tts_files = []
+        self.selected_file_lines = []
+
+        self._scan_tts_folder()
+
+    # --------------------------------------------------------------------------
+    # NEW: Load .txt files from /TTS/
+    # --------------------------------------------------------------------------
+    def _scan_tts_folder(self):
+        if not os.path.exists(self.tts_folder):
+            os.makedirs(self.tts_folder)
+
+        self.tts_files = [
+            f for f in os.listdir(self.tts_folder)
+            if f.lower().endswith(".txt")
+        ]
+
+    def _load_file_lines(self, filename):
+        path = os.path.join(self.tts_folder, filename)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f.readlines() if line.strip()]
+            self.selected_file_lines = lines
+        except Exception as e:
+            print("[TTS] Failed reading file:", e)
+            self.selected_file_lines = []
+
+    # --------------------------------------------------------------------------
+    # Audio
+    # --------------------------------------------------------------------------
     def generate_tts_audio(self, text: str):
-        """Generate TTS audio for given text and store as stereo buffer."""
         if not text.strip():
             return
 
-        # Create a temporary WAV file
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
             path = tmpfile.name
 
@@ -47,26 +80,27 @@ class TTS(AudioModule):
         finally:
             try:
                 engine.stop()
-            except Exception:
+            except:
                 pass
             del engine
             gc.collect()
 
         try:
             data, fs = sf.read(path, dtype="float32")
+
             if data.ndim == 1:
                 data = np.column_stack((data, data))
 
-            # Apply pitch shifting by resampling
+            # Pitch shifting
             if self.pitch != 1.0:
                 new_len = int(len(data) / self.pitch)
-                old_indices = np.linspace(0, len(data) - 1, num=new_len)
+                idx = np.linspace(0, len(data) - 1, num=new_len)
                 data = np.array([
-                    np.interp(old_indices, np.arange(len(data)), data[:, 0]),
-                    np.interp(old_indices, np.arange(len(data)), data[:, 1])
+                    np.interp(idx, np.arange(len(data)), data[:, 0]),
+                    np.interp(idx, np.arange(len(data)), data[:, 1])
                 ]).T
 
-            # Resample to match output sample rate if necessary
+            # Resample
             if fs != self.sample_rate:
                 ratio = self.sample_rate / fs
                 idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
@@ -76,13 +110,11 @@ class TTS(AudioModule):
             self.buffer = data
             self.playing = True
             self.pos = 0
+
         except Exception as e:
-            print(f"[TTS] Failed to load audio: {e}")
-            self.buffer = np.zeros((0, 2), dtype=np.float32)
-            self.playing = False
+            print("[TTS] Load audio error:", e)
 
     def generate(self, frames: int):
-        """Output current TTS buffer with optional looping."""
         out = np.zeros((frames, 2), dtype=np.float32)
         if not self.playing or len(self.buffer) == 0:
             return out
@@ -94,40 +126,37 @@ class TTS(AudioModule):
 
         if self.pos >= len(self.buffer):
             if self.loop:
-                self.pos = 0  # restart playback
+                self.pos = 0
             else:
                 self.playing = False
 
         return out
 
+    # --------------------------------------------------------------------------
+    # UI
+    # --------------------------------------------------------------------------
     def get_ui(self) -> QWidget:
-        """Return UI with text entry, play/stop buttons, voice, pitch, and loop."""
         widget = QWidget()
-        layout = QVBoxLayout()
-        widget.setLayout(layout)
+        layout = QVBoxLayout(widget)
 
-        # --- Text box ---
+        # ---------------- Text Input ----------------
         layout.addWidget(QLabel("Enter text to speak:"))
         text_input = QTextEdit()
         text_input.setFixedHeight(80)
         layout.addWidget(text_input)
 
-        # --- Voice selection ---
+        # ---------------- Voice Dropdown ----------------
         layout.addWidget(QLabel("Select voice:"))
         voice_dropdown = QComboBox()
+
         for v in self.voices:
             voice_dropdown.addItem(v.name)
-        voice_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        voice_dropdown.setMinimumHeight(30)
+        voice_dropdown.currentIndexChanged.connect(
+            lambda i: setattr(self, "current_voice", self.voices[i].id)
+        )
         layout.addWidget(voice_dropdown)
 
-        # Update current voice when dropdown changes
-        def on_voice_change(idx):
-            self.current_voice = self.voices[idx].id
-        voice_dropdown.currentIndexChanged.connect(on_voice_change)
-
-
-        # --- Pitch slider ---
+        # ---------------- Pitch Slider ----------------
         layout.addWidget(QLabel("Pitch"))
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
@@ -137,63 +166,92 @@ class TTS(AudioModule):
             s = val / 100.0
             return 0.5 * (4 ** s)
 
-        def pitch_to_slider(pitch):
-            s = np.log2(pitch / 0.5) / 2
-            return int(s * 100)
-
-        pitch_slider.setValue(pitch_to_slider(self.pitch))
-        pitch_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        pitch_slider.setTickInterval(25)
-        pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
+        pitch_slider.setValue(50)
+        pitch_slider.valueChanged.connect(
+            lambda v: setattr(self, "pitch", slider_to_pitch(v))
+        )
         layout.addWidget(pitch_slider)
 
-        # --- Play / Stop buttons + Loop checkbox ---
-        controls_layout = QHBoxLayout()
+        # ---------------- Play / Stop / Loop ----------------
+        ctl = QHBoxLayout()
         play_btn = QPushButton("▶ Play")
         stop_btn = QPushButton("■ Stop")
-        loop_checkbox = QCheckBox("Loop")
+        loop_box = QCheckBox("Loop")
 
-        controls_layout.addWidget(play_btn)
-        controls_layout.addWidget(stop_btn)
-        controls_layout.addWidget(loop_checkbox)
-        layout.addLayout(controls_layout)
+        play_btn.clicked.connect(lambda: self._play(text_input))
+        stop_btn.clicked.connect(self._stop)
+        loop_box.stateChanged.connect(lambda s: setattr(self, "loop", bool(s)))
 
-        # Connect buttons
-        def on_play():
-            self.text = text_input.toPlainText().strip()
-            self.generate_tts_audio(self.text)
+        ctl.addWidget(play_btn)
+        ctl.addWidget(stop_btn)
+        ctl.addWidget(loop_box)
+        layout.addLayout(ctl)
 
-        def on_stop():
-            self.playing = False
-            self.pos = 0
+        # ======================================================================
+        # NEW SECTION: TTS PRESET FILES
+        # ======================================================================
+        layout.addWidget(QLabel("Preset Files (from /TTS/):"))
+        file_list = QListWidget()
+        file_list.addItems(self.tts_files)
+        layout.addWidget(file_list)
 
-        play_btn.clicked.connect(on_play)
-        stop_btn.clicked.connect(on_stop)
-        loop_checkbox.stateChanged.connect(lambda state: setattr(self, "loop", state))
+        line_list_label = QLabel("Lines:")
+        line_list_label.setVisible(False)
+        layout.addWidget(line_list_label)
+
+        line_list = QListWidget()
+        line_list.setVisible(False)
+        layout.addWidget(line_list)
+
+        # --- Click a file → load its lines ---
+        def on_file_clicked():
+            fname = file_list.currentItem().text()
+            self._load_file_lines(fname)
+
+            # update UI
+            line_list.clear()
+            line_list.addItems(self.selected_file_lines)
+            line_list.setVisible(True)
+            line_list_label.setVisible(True)
+
+        file_list.itemClicked.connect(lambda _: on_file_clicked())
+
+        # --- Click a line → insert into text box ---
+        def on_line_clicked():
+            if line_list.currentItem():
+                text_input.setText(line_list.currentItem().text())
+
+        line_list.itemClicked.connect(lambda _: on_line_clicked())
 
         return widget
 
-    
-    # ---------------- Serialization ----------------
-    def serialize(self) -> dict:
-        """Return a dict representing this module's state."""
-        data = super().serialize()  # includes input/output node counts
+    # ----------------------------------------------------------------------
+    # Play/Stop helpers
+    # ----------------------------------------------------------------------
+    def _play(self, text_input):
+        self.text = text_input.toPlainText().strip()
+        self.generate_tts_audio(self.text)
+
+    def _stop(self):
+        self.playing = False
+        self.pos = 0
+
+    # ----------------------------------------------------------------------
+    # Serialization
+    # ----------------------------------------------------------------------
+    def serialize(self):
+        data = super().serialize()
         data.update({
             "text": self.text,
             "current_voice": self.current_voice,
             "pitch": self.pitch,
-            "playing": self.playing,
-            "pos": self.pos,
-            # Note: buffer is transient; not serialized
+            "loop": self.loop,
         })
         return data
 
-    def deserialize(self, state: dict):
-        """Restore module state from a dictionary."""
+    def deserialize(self, state):
         super().deserialize(state)
         self.text = state.get("text", "")
-        self.current_voice = state.get("current_voice", self.voices[0].id if self.voices else None)
+        self.current_voice = state.get("current_voice", self.current_voice)
         self.pitch = state.get("pitch", 1.0)
-        self.playing = state.get("playing", False)
-        self.pos = state.get("pos", 0)
-
+        self.loop = state.get("loop", False)
