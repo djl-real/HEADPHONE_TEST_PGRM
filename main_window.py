@@ -21,6 +21,7 @@ from PyQt6.QtCore import (
 from audio_module import AudioModule
 from toolbar_manager import ToolbarManager
 from ui_elements import ModuleItem, NodeCircle, ConnectionPath
+from modules.endpoint import Endpoint
 from mixer import Mixer
 
 def db_to_linear(db_value: float) -> float:
@@ -550,6 +551,23 @@ class MainWindow(QMainWindow):
             self.stream.close()
         super().closeEvent(event)
 
+    def spawn_module(self, module: AudioModule):
+        # Create visual representation
+        item = ModuleItem(module)
+
+        # Center spawn position based on current camera view
+        view = self.view
+        view_center = view.mapToScene(view.viewport().rect().center())
+
+        item.setPos(QPointF(view_center.x() - 50, view_center.y() - 25))
+        self.scene.addItem(item)
+
+        # Register module
+        if isinstance(module, Endpoint):
+            self.endpoints.append(module)
+            self.mixer.add_endpoint(module)
+        else:
+            self.modules.append(module)
     
     def save_layout(self, path: str):
         """Save all modules, nodes, and connections to a .layout JSON file."""

@@ -121,6 +121,24 @@ class ToolbarManager:
         """)
         self.toolbar.addWidget(button)
 
+    def spawn_module(self, name: str):
+        """Creates the backend module and adds its graphical ModuleItem to the scene, centered in the current view."""
+        cls = None
+        for folder_modules in self.module_folders.values():
+            for n, c in folder_modules:
+                if n == name:
+                    cls = c
+                    break
+            if cls:
+                break
+
+        if cls is None:
+            print(f"Unknown module: {name}")
+            return
+
+        module = cls()
+        self.main_window.spawn_module(module)
+
     def save_layout(self):
         """Opens file dialog and delegates saving to the main window."""
         file_path, _ = QFileDialog.getSaveFileName(
@@ -176,35 +194,3 @@ class ToolbarManager:
             """)
             self.toolbar.addWidget(button)
 
-    def spawn_module(self, name: str):
-        """Creates the backend module and adds its graphical ModuleItem to the scene, centered in the current view."""
-        cls = None
-        for folder_modules in self.module_folders.values():
-            for n, c in folder_modules:
-                if n == name:
-                    cls = c
-                    break
-            if cls:
-                break
-
-        if cls is None:
-            print(f"Unknown module: {name}")
-            return
-
-        module = cls()
-
-        # Register module
-        if isinstance(module, Endpoint):
-            self.main_window.endpoints.append(module)
-        else:
-            self.main_window.modules.append(module)
-
-        # Create visual representation
-        item = ModuleItem(module)
-
-        # Center spawn position based on current camera view
-        view = self.main_window.view
-        view_center = view.mapToScene(view.viewport().rect().center())
-
-        item.setPos(QPointF(view_center.x() - 50, view_center.y() - 25))
-        self.main_window.scene.addItem(item)
