@@ -199,6 +199,7 @@ class Endpoint(AudioModule):
         widget.mute_button = QPushButton("Mute")
         widget.mute_button.setCheckable(True)
         widget.mute_button.setChecked(self.muted)
+        widget.mute_button.setFixedWidth(80)
         widget.mute_button.setStyleSheet("""
             QPushButton {
                 background-color: #e74c3c;

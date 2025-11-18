@@ -11,7 +11,7 @@ def is_dead(obj):
     if obj is None:
         return True
     try:
-        obj.objectName()  # calling ANY Qt method raises RuntimeError if deleted
+        obj.objectName()  # any Qt method raises RuntimeError if deleted
         return False
     except RuntimeError:
         return True
@@ -20,7 +20,7 @@ def is_dead(obj):
 class Mixer(QWidget):
     """Bottom-aligned mixer panel with channel strips and master fader."""
     COLLAPSED_HEIGHT = 100
-    EXPANDED_HEIGHT = 350  # full fader height + margin
+    EXPANDED_HEIGHT = 400  # full fader height + margin
 
     def __init__(self, main_window):
         super().__init__(main_window)
@@ -32,7 +32,7 @@ class Mixer(QWidget):
         self.anim = None
 
         # Base geometry (collapsed by default)
-        self.setGeometry(0, main_window.height() - self.COLLAPSED_HEIGHT - 200,
+        self.setGeometry(0, main_window.height() - self.COLLAPSED_HEIGHT,
                          main_window.width(), self.COLLAPSED_HEIGHT)
         self.setStyleSheet("background-color: rgba(50, 50, 50, 230);")
 
@@ -43,6 +43,9 @@ class Mixer(QWidget):
         # Keep pinned to bottom on resize
         self.main_window.resizeEvent = self._on_main_window_resize
 
+    # ---------------------------------------------------------
+    # RESIZE
+    # ---------------------------------------------------------
     def _on_main_window_resize(self, event):
         """Keep the mixer pinned to the bottom on resize."""
         height = self.EXPANDED_HEIGHT if self.is_expanded else self.COLLAPSED_HEIGHT
@@ -65,10 +68,10 @@ class Mixer(QWidget):
         self.scroll_layout = QHBoxLayout(self.scroll_content)
         self.scroll_layout.setContentsMargins(10, 5, 10, 5)
         self.scroll_layout.setSpacing(15)
-        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.scroll_area.setWidget(self.scroll_content)
 
-        # Mixer button
+        # Mixer toggle button
         self.toggle_button = QPushButton("Mixer ▲", self)
         self.toggle_button.setFixedHeight(30)
         self.toggle_button.clicked.connect(self.toggle_panel)
@@ -76,6 +79,9 @@ class Mixer(QWidget):
         layout.addWidget(self.toggle_button)
         layout.addWidget(self.scroll_area)
 
+    # ---------------------------------------------------------
+    # SYNC TIMER
+    # ---------------------------------------------------------
     def _setup_timer(self):
         """Syncs mixer UI with endpoints every 200ms."""
         self.sync_timer = QTimer()
@@ -95,7 +101,7 @@ class Mixer(QWidget):
                          self.main_window.width(), end_height)
 
         self.anim = QPropertyAnimation(self, b"geometry")
-        self.anim.setDuration(300)
+        self.anim.setDuration(200)
         self.anim.setStartValue(start_geom)
         self.anim.setEndValue(end_geom)
         self.anim.start()
@@ -109,22 +115,19 @@ class Mixer(QWidget):
 
         ui = endpoint.get_ui()
         ui.setParent(self.scroll_content)
-
         ui.setMaximumWidth(140)
         ui.setMaximumHeight(300)
 
         self.scroll_layout.addWidget(ui)
-
         self.endpoints.append(endpoint)
         self.channel_strips.append(ui)
 
     def remove_endpoint(self, endpoint):
         """Safely remove the endpoint's mixer UI without crashing."""
-
         if endpoint not in self.endpoints:
             return
 
-        # Attempt to get endpoint's mixer UI (saved in endpoint.widgets)
+        # Attempt to get the endpoint's mixer UI
         ui = None
         try:
             ui = endpoint.widgets[1]
@@ -134,12 +137,10 @@ class Mixer(QWidget):
         # Remove mixer UI if it still exists
         if ui in self.channel_strips:
             self.scroll_layout.removeWidget(ui)
-
             if not is_dead(ui):
                 ui.hide()
                 ui.setParent(None)
                 ui.deleteLater()
-
             self.channel_strips.remove(ui)
 
         # Remove from endpoint list
@@ -154,22 +155,18 @@ class Mixer(QWidget):
         dead_eps = []
 
         for ep in list(self.endpoints):
-            # Endpoint must expose widgets list (you already do this)
             try:
                 ui = ep.widgets[1]
             except Exception:
                 ui = None
 
-            # If UI is missing or deleted → schedule removal
             if ui is None or is_dead(ui):
                 dead_eps.append(ep)
                 continue
 
-            # Try syncing
             try:
                 ep.sync()
             except RuntimeError:
-                # UI got deleted mid-operation
                 dead_eps.append(ep)
 
         # Remove endpoints with dead UIs

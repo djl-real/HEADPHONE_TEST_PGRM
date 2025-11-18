@@ -441,12 +441,19 @@ class MainWindow(QMainWindow):
         p.nice(psutil.HIGH_PRIORITY_CLASS)
 
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
-        self.resize(1000, 600)
+        self.resize(1200, 800)
 
         # Workspace
         self.scene = WorkspaceScene()
         self.view = WorkspaceView(self.scene)
-        self.setCentralWidget(self.view)
+        
+        self.container = QWidget()
+        self.setCentralWidget(self.container)
+
+        container_layout = QVBoxLayout(self.container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+        container_layout.addWidget(self.view)
 
         # Audio backend
         self.sample_rate = 44100
@@ -457,14 +464,15 @@ class MainWindow(QMainWindow):
         # Toolbar manager
         self.toolbar_manager = ToolbarManager(self)
 
-        # Mixer
+        # Mixer (overlay)
         self.mixer = Mixer(self)
-        dock = QWidget()
-        dock_layout = QVBoxLayout(dock)
-        dock_layout.setContentsMargins(0, 0, 0, 0)
-        dock_layout.addWidget(self.view)
-        dock_layout.addWidget(self.mixer)
-        self.setCentralWidget(dock)
+        self.mixer.setParent(self.container)
+        self.mixer.raise_()
+
+        # Whenever mixer collapses/expands, reposition it
+        if hasattr(self.mixer, "toggled"):
+            self.mixer.toggled.connect(self._reposition_mixer)
+
 
         # --- Ring buffer configuration ---
         self.ring_size = 8  # Number of blocks ahead to prefill
@@ -490,6 +498,26 @@ class MainWindow(QMainWindow):
             dtype="float32",
         )
         self.stream.start()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reposition_mixer()
+
+    def _reposition_mixer(self):
+        """Keep mixer pinned to bottom as an overlay."""
+        if not self.mixer:
+            return
+
+        cw = self.container.width()
+        ch = self.container.height()
+        mh = self.mixer.height()
+
+        self.mixer.setGeometry(
+            0,
+            ch - mh,
+            cw,
+            mh
+        )
 
     # ---------- Worker Thread ----------
     def _audio_worker_loop(self):
