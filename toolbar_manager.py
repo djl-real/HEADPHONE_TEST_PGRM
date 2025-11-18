@@ -21,6 +21,7 @@ from modules.reversedelay import ReverseDelay
 from modules.samplehold import SampleHoldMod
 from modules.multiply import Multiply
 from modules.convolve import Convolve
+from modules.slowdown import Slowdown
 
 
 class ToolbarManager:
@@ -67,6 +68,7 @@ class ToolbarManager:
             "Effects": [
                 ("Pan", Pan),
                 ("Hold", Hold),
+                ("Slowdown", Slowdown),
                 ("Bitcrusher", Bitcrusher),
                 ("Reverb", Reverb),
                 ("Bandpass", Bandpass),
@@ -74,7 +76,7 @@ class ToolbarManager:
                 ("ReverseDelay", ReverseDelay),
                 ("SampleHoldMod", SampleHoldMod),
                 ("Multiply", Multiply),
-                ("Convolve", Convolve),
+                ("Convolve", Convolve)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
