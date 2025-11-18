@@ -446,7 +446,7 @@ class MainWindow(QMainWindow):
         # Workspace
         self.scene = WorkspaceScene()
         self.view = WorkspaceView(self.scene)
-        
+
         self.container = QWidget()
         self.setCentralWidget(self.container)
 
@@ -664,6 +664,9 @@ class MainWindow(QMainWindow):
         if not path:
             return
 
+        # --------------------------
+        # Load JSON layout file
+        # --------------------------
         try:
             with open(path, "r") as f:
                 layout_data = json.load(f)
@@ -671,20 +674,24 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error Loading Layout", str(e))
             return
 
-        # Clear scene
+        # --------------------------
+        # Clear existing scene
+        # --------------------------
         self.scene.clear()
         self.modules.clear()
         self.endpoints.clear()
+        self.mixer.scroll_layout.update()
+        module_map = {}  # module_id → ModuleItem
 
-        module_map = {}  # 🔧 module_id → ModuleItem
-
+        # --------------------------
         # Recreate modules
+        # --------------------------
         for mod_info in layout_data.get("modules", []):
             mod_type = mod_info.get("type")
             module_id = mod_info.get("id")
             pos_x, pos_y = mod_info.get("pos", [0, 0])
 
-            # Find matching class
+            # Find class from toolbar registry
             cls = None
             for folder_modules in self.toolbar_manager.module_folders.values():
                 for name, c in folder_modules:
@@ -695,26 +702,39 @@ class MainWindow(QMainWindow):
                     break
 
             if not cls:
-                print(f"Skipping unknown module: {mod_type}")
+                print(f"Skipping unknown module type: {mod_type}")
                 continue
 
+            # Instantiate module backend
             module = cls()
+
+            # Load module state
             if hasattr(module, "deserialize"):
                 module.deserialize(mod_info.get("state", {}))
 
-            if "Endpoint" in mod_type:
-                self.endpoints.append(module)
-                self.mixer.add_endpoint(module)
-            else:
-                self.modules.append(module)
+            # Use MainWindow's official spawner
+            self.spawn_module(module)
 
-            item = ModuleItem(module)
-            item.module_id = module_id  # 🔧 restore same ID
+            # Retrieve ModuleItem object from scene (it's the last added)
+            item = None
+            for it in self.scene.items():
+                if isinstance(it, ModuleItem) and it.module is module:
+                    item = it
+                    break
+
+            if not item:
+                print("Error: ModuleItem was not created by spawn_module()!")
+                continue
+
+            # Set ID and position
+            item.module_id = module_id
             item.setPos(QPointF(pos_x, pos_y))
-            self.scene.addItem(item)
+
             module_map[module_id] = item
 
-        # Recreate connections (UI + backend)
+        # --------------------------
+        # Restore Connections
+        # --------------------------
         for conn in layout_data.get("connections", []):
             src_id = conn["from"]["module_id"]
             dst_id = conn["to"]["module_id"]
@@ -726,25 +746,29 @@ class MainWindow(QMainWindow):
             if not src_item or not dst_item:
                 continue
 
-            src_node = src_item.output_nodes[src_idx] if src_idx < len(src_item.output_nodes) else None
-            dst_node = dst_item.input_nodes[dst_idx] if dst_idx < len(dst_item.input_nodes) else None
+            # Get nodes
+            try:
+                src_node = src_item.output_nodes[src_idx]
+                dst_node = dst_item.input_nodes[dst_idx]
+            except Exception:
+                continue
+
             if not src_node or not dst_node:
                 continue
 
-            # Connect backend nodes first
+            # Backend connect
             if src_node.node_obj and dst_node.node_obj:
                 try:
                     src_node.node_obj.connect(dst_node.node_obj)
                 except Exception:
                     pass
 
-            # Create UI connection
+            # UI connection
             conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
             src_node.connection = conn_path
             dst_node.connection = conn_path
-            self.scene.addItem(conn_path)
+            #self.scene.addItem(conn_path)
 
-        # QMessageBox.information(self, "Layout Loaded", f"Layout loaded from:\n{path}")
 
 
 
