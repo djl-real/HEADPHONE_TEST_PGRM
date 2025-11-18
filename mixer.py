@@ -1,5 +1,5 @@
 import numpy as np
-from PyQt6.QtCore import Qt, QPropertyAnimation, QTimer, QRect
+from PyQt6.QtCore import Qt, QPropertyAnimation, QTimer, QRect, QEasingCurve
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QPushButton
 )
@@ -97,13 +97,21 @@ class Mixer(QWidget):
 
         start_geom = self.geometry()
         end_height = self.EXPANDED_HEIGHT if self.is_expanded else self.COLLAPSED_HEIGHT
-        end_geom = QRect(0, self.main_window.height() - end_height,
-                         self.main_window.width(), end_height)
+        end_geom = QRect(
+            0,
+            self.main_window.height() - end_height,
+            self.main_window.width(),
+            end_height
+        )
 
         self.anim = QPropertyAnimation(self, b"geometry")
-        self.anim.setDuration(200)
+        self.anim.setDuration(300)
         self.anim.setStartValue(start_geom)
         self.anim.setEndValue(end_geom)
+
+        # ✨ Add easing curve
+        self.anim.setEasingCurve(QEasingCurve.Type.OutExpo)
+
         self.anim.start()
 
     # ---------------------------------------------------------
