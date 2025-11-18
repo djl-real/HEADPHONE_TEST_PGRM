@@ -553,7 +553,7 @@ class MainWindow(QMainWindow):
 
     def spawn_module(self, module: AudioModule):
         # Create visual representation
-        item = ModuleItem(module)
+        item = ModuleItem(module, self)
 
         # Center spawn position based on current camera view
         view = self.view
@@ -568,6 +568,15 @@ class MainWindow(QMainWindow):
             self.mixer.add_endpoint(module)
         else:
             self.modules.append(module)
+
+    def destroy_module(self, module):
+        if isinstance(module, Endpoint):
+            self.mixer.remove_endpoint(module)
+            if module in self.endpoints:
+                self.endpoints.remove(module)
+        else:
+            if module in self.modules:
+                self.modules.remove(module)
     
     def save_layout(self, path: str):
         """Save all modules, nodes, and connections to a .layout JSON file."""
@@ -617,9 +626,10 @@ class MainWindow(QMainWindow):
         try:
             with open(path, "w") as f:
                 json.dump(layout_data, f, indent=4)
-            QMessageBox.information(self, "Layout Saved", f"Layout saved to:\n{path}")
+            # QMessageBox.information(self, "Layout Saved", f"Layout saved to:\n{path}")
         except Exception as e:
-            QMessageBox.critical(self, "Error Saving Layout", str(e))
+            # QMessageBox.critical(self, "Error Saving Layout", str(e))
+            pass
 
     def load_layout(self, path: str):
         """Load modules, positions, and connections from a .layout JSON file."""
@@ -706,7 +716,7 @@ class MainWindow(QMainWindow):
             dst_node.connection = conn_path
             self.scene.addItem(conn_path)
 
-        QMessageBox.information(self, "Layout Loaded", f"Layout loaded from:\n{path}")
+        # QMessageBox.information(self, "Layout Loaded", f"Layout loaded from:\n{path}")
 
 
 

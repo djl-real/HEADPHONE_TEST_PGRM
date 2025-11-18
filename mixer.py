@@ -5,6 +5,18 @@ from PyQt6.QtWidgets import (
 )
 
 
+# ----------------- PyQt6-safe deletion check -----------------
+def is_dead(obj):
+    """Return True if the Qt object has been deleted."""
+    if obj is None:
+        return True
+    try:
+        obj.objectName()  # calling ANY Qt method raises RuntimeError if deleted
+        return False
+    except RuntimeError:
+        return True
+
+
 class Mixer(QWidget):
     """Bottom-aligned mixer panel with channel strips and master fader."""
     COLLAPSED_HEIGHT = 100
@@ -38,13 +50,15 @@ class Mixer(QWidget):
                          self.main_window.width(), height)
         event.accept()
 
+    # ---------------------------------------------------------
+    # UI LAYOUT
+    # ---------------------------------------------------------
     def _build_ui(self):
-        """Builds scroll area and toggle button inside the mixer."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Scrollable channel area (now parented to self)
+        # Scrollable strip area
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(True)
         self.scroll_content = QWidget()
@@ -54,12 +68,11 @@ class Mixer(QWidget):
         self.scroll_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.scroll_area.setWidget(self.scroll_content)
 
-        # Toggle button pinned at bottom
+        # Mixer button
         self.toggle_button = QPushButton("Mixer ▲", self)
         self.toggle_button.setFixedHeight(30)
         self.toggle_button.clicked.connect(self.toggle_panel)
 
-        # Stack them vertically: scroll area below, button above
         layout.addWidget(self.toggle_button)
         layout.addWidget(self.scroll_area)
 
@@ -69,8 +82,10 @@ class Mixer(QWidget):
         self.sync_timer.timeout.connect(self.sync_from_endpoints)
         self.sync_timer.start(200)
 
+    # ---------------------------------------------------------
+    # EXPAND / COLLAPSE
+    # ---------------------------------------------------------
     def toggle_panel(self):
-        """Expand/collapse mixer panel."""
         self.is_expanded = not self.is_expanded
         self.toggle_button.setText("Mixer ▼" if self.is_expanded else "Mixer ▲")
 
@@ -84,40 +99,79 @@ class Mixer(QWidget):
         self.anim.setStartValue(start_geom)
         self.anim.setEndValue(end_geom)
         self.anim.start()
-        
-        # Show/hide scroll area depending on expanded state
-        # if self.is_expanded:
-        #     self.scroll_area.show()
-        # else:
-        #     self.scroll_area.hide()
 
-    # ---------- Channel Management ----------
+    # ---------------------------------------------------------
+    # CHANNEL MANAGEMENT
+    # ---------------------------------------------------------
     def add_endpoint(self, endpoint):
         if endpoint in self.endpoints:
             return
+
         ui = endpoint.get_ui()
-        # Remove from old parent if already shown in workspace
         ui.setParent(self.scroll_content)
-        # Narrow visuals for mixer mode (optional)
+
         ui.setMaximumWidth(140)
         ui.setMaximumHeight(300)
-        # Insert before master channel
-        self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, ui)
+
+        self.scroll_layout.addWidget(ui)
+
         self.endpoints.append(endpoint)
         self.channel_strips.append(ui)
 
     def remove_endpoint(self, endpoint):
+        """Safely remove the endpoint's mixer UI without crashing."""
+
         if endpoint not in self.endpoints:
             return
-        ui = endpoint.get_mixer_ui()
+
+        # Attempt to get endpoint's mixer UI (saved in endpoint.widgets)
+        ui = None
+        try:
+            ui = endpoint.widgets[1]
+        except Exception:
+            ui = None
+
+        # Remove mixer UI if it still exists
         if ui in self.channel_strips:
             self.scroll_layout.removeWidget(ui)
-            ui.hide()
-            ui.setParent(None)
+
+            if not is_dead(ui):
+                ui.hide()
+                ui.setParent(None)
+                ui.deleteLater()
+
             self.channel_strips.remove(ui)
+
+        # Remove from endpoint list
+        if endpoint in self.endpoints:
             self.endpoints.remove(endpoint)
 
+    # ---------------------------------------------------------
+    # SYNC LOOP
+    # ---------------------------------------------------------
     def sync_from_endpoints(self):
-        for ep in self.endpoints:
-            ep.sync()
+        """Safely sync all endpoints; remove any with dead UI."""
+        dead_eps = []
 
+        for ep in list(self.endpoints):
+            # Endpoint must expose widgets list (you already do this)
+            try:
+                ui = ep.widgets[1]
+            except Exception:
+                ui = None
+
+            # If UI is missing or deleted → schedule removal
+            if ui is None or is_dead(ui):
+                dead_eps.append(ep)
+                continue
+
+            # Try syncing
+            try:
+                ep.sync()
+            except RuntimeError:
+                # UI got deleted mid-operation
+                dead_eps.append(ep)
+
+        # Remove endpoints with dead UIs
+        for ep in dead_eps:
+            self.remove_endpoint(ep)

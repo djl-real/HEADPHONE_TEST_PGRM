@@ -21,7 +21,6 @@ from modules.reversedelay import ReverseDelay
 from modules.samplehold import SampleHoldMod
 from modules.multiply import Multiply
 from modules.convolve import Convolve
-from ui_elements import ModuleItem
 
 
 class ToolbarManager:

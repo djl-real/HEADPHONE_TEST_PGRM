@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
 from PyQt6.QtCore import QPointF, Qt, QRectF, QTimer
 
+# from main_window import MainWindow
 from audio_module import AudioModule
 
 
@@ -295,12 +296,11 @@ class ModuleItem(QGraphicsRectItem):
     HIGHLIGHT_COLOR = QColor(220, 180, 30)
     DEFAULT_CONN_COLOR = QColor(180, 180, 180)
 
-    def __init__(self, module: AudioModule, width_override: int = None, height_override: int = None):
+    def __init__(self, module: AudioModule, main_window):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         self.module = module
         self.module_id = f"{id(module)}"  # 🔧 unique ID for save/load mapping
-        self.width_override = width_override
-        self.height_override = height_override
+        self.main_window = main_window
 
         self.setBrush(QBrush(QColor(40, 40, 40)))
         self.setPen(QPen(QColor(120, 120, 120)))
@@ -370,10 +370,10 @@ class ModuleItem(QGraphicsRectItem):
             height = max(height, proxy_rect.height() + label_height + 20)
             self._proxy_widget = proxy
 
-        if self.width_override:
-            width = max(width, self.width_override)
-        if self.height_override:
-            height = max(height, self.height_override)
+        # if self.width_override:
+        #     width = max(width, self.width_override)
+        # if self.height_override:
+        #     height = max(height, self.height_override)
 
         self.setRect(0, 0, width, height)
 
@@ -395,6 +395,7 @@ class ModuleItem(QGraphicsRectItem):
 
     def cleanup(self):
         """Safely clean up and remove module from scene."""
+        self.main_window.destroy_module(self)
         for node in self.input_nodes + self.output_nodes:
             if node.connection:
                 try:
@@ -410,10 +411,7 @@ class ModuleItem(QGraphicsRectItem):
                 node.temp_connection = None
 
         try:
-            if hasattr(self.module, "destroy"):
-                self.module.destroy()
-            elif hasattr(self.module, "close"):
-                self.module.close()
+            self.module.destroy()
         except Exception:
             pass
 
