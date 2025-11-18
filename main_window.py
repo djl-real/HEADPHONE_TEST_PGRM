@@ -440,7 +440,7 @@ class MainWindow(QMainWindow):
         p.nice(psutil.HIGH_PRIORITY_CLASS)
 
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
-        self.resize(1200, 800)
+        self.resize(1000, 600)
 
         # Workspace
         self.scene = WorkspaceScene()

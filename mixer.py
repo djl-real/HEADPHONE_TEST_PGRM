@@ -176,7 +176,7 @@ class Mixer(QWidget):
     def _on_main_window_resize(self, event):
         """Keep the mixer pinned to the bottom on resize."""
         height = self.EXPANDED_HEIGHT if self.is_expanded else self.COLLAPSED_HEIGHT
-        self.setGeometry(0, self.main_window.height() - height,
+        self.setGeometry(0, self.main_window.height() - height - 70,
                          self.main_window.width(), height)
         event.accept()
 
@@ -223,7 +223,7 @@ class Mixer(QWidget):
 
         start_geom = self.geometry()
         end_height = self.EXPANDED_HEIGHT if self.is_expanded else self.COLLAPSED_HEIGHT
-        end_geom = QRect(0, self.main_window.height() - end_height,
+        end_geom = QRect(0, self.main_window.height() - end_height - 70,
                          self.main_window.width(), end_height)
 
         self.anim = QPropertyAnimation(self, b"geometry")
@@ -231,7 +231,7 @@ class Mixer(QWidget):
         self.anim.setStartValue(start_geom)
         self.anim.setEndValue(end_geom)
         self.anim.start()
-
+        
         # Show/hide scroll area depending on expanded state
         if self.is_expanded:
             self.scroll_area.show()
