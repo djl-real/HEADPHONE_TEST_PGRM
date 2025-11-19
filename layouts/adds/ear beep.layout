@@ -1,0 +1,127 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1744386888560",
+            "type": "Endpoint",
+            "pos": [
+                2263.9130434782605,
+                1262.8260869565222
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": 0.09999999999999432,
+                "muted": true,
+                "nickname": "ear beep"
+            }
+        },
+        {
+            "id": "1744387120080",
+            "type": "Crossfade",
+            "pos": [
+                1544.7826086956525,
+                1380.217391304348
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.228
+            }
+        },
+        {
+            "id": "1744383603920",
+            "type": "Pan",
+            "pos": [
+                2016.0869565217386,
+                1386.3043478260875
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": -1.0
+            }
+        },
+        {
+            "id": "1744387119440",
+            "type": "Static",
+            "pos": [
+                1265.6521739130433,
+                1441.9565217391303
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "1744383603584",
+            "type": "Wave",
+            "pos": [
+                1175.2173913043482,
+                1194.1304347826085
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "frequency": 957.2601846452767,
+                "target_frequency": 957.2601846452769,
+                "amplitude": 0.5,
+                "wave_type": "Sine",
+                "freq_smooth_factor": 0.18,
+                "phase": 0.47124714031773607
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "1744383603920",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744386888560",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1744387120080",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744383603920",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1744383603584",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744387120080",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1744387119440",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744387120080",
+                "node_index": 1,
+                "type": "input"
+            }
+        }
+    ]
+}

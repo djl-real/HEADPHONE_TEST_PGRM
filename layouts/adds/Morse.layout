@@ -1,0 +1,428 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1744383604256",
+            "type": "Morse",
+            "pos": [
+                1312.6086956521738,
+                1963.6956521739135
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "text": "HEADPHONE_TEST_PGRM",
+                "speed_units_per_sec": 20,
+                "sequence": [
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        4
+                    ],
+                    [
+                        false,
+                        12
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        4
+                    ],
+                    [
+                        true,
+                        12
+                    ],
+                    [
+                        false,
+                        40
+                    ]
+                ],
+                "seq_index": 77,
+                "block_progress": 0,
+                "applied": true,
+                "halt_enabled": true
+            }
+        },
+        {
+            "id": "1744387120720",
+            "type": "Wave",
+            "pos": [
+                930.8695652173915,
+                1961.0869565217395
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "frequency": 893.3671843019262,
+                "target_frequency": 893.3671843019265,
+                "amplitude": 0.5,
+                "wave_type": "Sine",
+                "freq_smooth_factor": 0.151,
+                "phase": 0.5962602622449182
+            }
+        },
+        {
+            "id": "1744383760304",
+            "type": "Endpoint",
+            "pos": [
+                1603.0434782608697,
+                1887.1739130434778
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -6.200000000000003,
+                "muted": true,
+                "nickname": "Morse"
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "1744383604256",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744383760304",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1744387120720",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744383604256",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}

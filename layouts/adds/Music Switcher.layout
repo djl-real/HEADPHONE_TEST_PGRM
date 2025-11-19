@@ -1,0 +1,96 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2545376257008",
+            "type": "Music",
+            "pos": [
+                -283.0,
+                1075.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2545341268352",
+            "type": "Music",
+            "pos": [
+                -292.05,
+                1576.3999999999999
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "1744387119120",
+            "type": "Crossfade",
+            "pos": [
+                236.35,
+                1502.1999999999998
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.5
+            }
+        },
+        {
+            "id": "2544960028752",
+            "type": "Endpoint",
+            "pos": [
+                508.70000000000005,
+                1387.8999999999999
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -8.0,
+                "muted": false,
+                "nickname": "Music Switcher"
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2545341268352",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744387119120",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1744387119120",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2544960028752",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2545376257008",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1744387119120",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
