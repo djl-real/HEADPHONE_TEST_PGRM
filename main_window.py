@@ -6,6 +6,7 @@ import numpy as np
 import sounddevice as sd
 import json
 import threading
+import uuid
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QMenu,
@@ -480,6 +481,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
         self.resize(1200, 800)
+        self.copied_layout = None
 
         # Workspace
         self.scene = WorkspaceScene()
@@ -715,6 +717,7 @@ class MainWindow(QMainWindow):
         # --------------------------
         # Clear existing scene
         # --------------------------
+        
         self.scene.clear()
         self.modules.clear()
         self.endpoints.clear()
@@ -806,6 +809,362 @@ class MainWindow(QMainWindow):
             src_node.connection = conn_path
             dst_node.connection = conn_path
             #self.scene.addItem(conn_path)
+
+    def add_layout(self, path: str):
+        """Add modules and connections from a .layout file WITHOUT clearing the existing scene."""
+
+        view_center = self.view.mapToScene(self.view.viewport().rect().center())
+        offset = QPointF(view_center.x() - 50, view_center.y() - 25)
+
+        if not path:
+            return
+
+        # --------------------------
+        # Load JSON
+        # --------------------------
+        try:
+            with open(path, "r") as f:
+                layout_data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Error Adding Layout", str(e))
+            return
+
+        module_map = {}  # new module_id → ModuleItem
+
+        # Collect existing IDs to avoid collisions
+        existing_ids = {item.module_id for item in self.scene.items() if isinstance(item, ModuleItem)}
+
+        # --------------------------
+        # Create modules
+        # --------------------------
+        for mod_info in layout_data.get("modules", []):
+            mod_type = mod_info.get("type")
+            module_id = mod_info.get("id")
+            pos_x, pos_y = mod_info.get("pos", [0, 0])
+
+            # Look up class in toolbar registry
+            cls = None
+            for folder_modules in self.toolbar_manager.module_folders.values():
+                for name, c in folder_modules:
+                    if name == mod_type:
+                        cls = c
+                        break
+                if cls:
+                    break
+
+            if not cls:
+                print(f"Skipping unknown module type: {mod_type}")
+                continue
+
+            # Instantiate module
+            module = cls()
+
+            # Load module state
+            if hasattr(module, "deserialize"):
+                module.deserialize(mod_info.get("state", {}))
+
+            # Spawn via proper helper
+            self.spawn_module(module)
+
+            # Retrieve the new ModuleItem from the scene
+            item = None
+            for it in self.scene.items():
+                if isinstance(it, ModuleItem) and it.module is module:
+                    item = it
+                    break
+
+            if not item:
+                print("Error: ModuleItem was not created by spawn_module()!")
+                continue
+
+            # Ensure unique ID if collision occurs
+            if module_id in existing_ids:
+                module_id = str(uuid.uuid4())
+
+            item.module_id = module_id
+
+            # Apply offset to avoid overlapping existing modules
+            item.setPos(QPointF(pos_x, pos_y) + offset)
+
+            module_map[module_id] = item
+
+        # --------------------------
+        # Recreate connections
+        # --------------------------
+        for conn in layout_data.get("connections", []):
+            src_id = conn["from"]["module_id"]
+            dst_id = conn["to"]["module_id"]
+            src_idx = conn["from"]["node_index"]
+            dst_idx = conn["to"]["node_index"]
+
+            src_item = module_map.get(src_id)
+            dst_item = module_map.get(dst_id)
+            if not src_item or not dst_item:
+                continue
+
+            # Try retrieving nodes
+            try:
+                src_node = src_item.output_nodes[src_idx]
+                dst_node = dst_item.input_nodes[dst_idx]
+            except Exception:
+                continue
+
+            # Backend connect
+            if src_node.node_obj and dst_node.node_obj:
+                try:
+                    src_node.node_obj.connect(dst_node.node_obj)
+                except Exception:
+                    pass
+
+            # UI connection
+            conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
+            src_node.connection = conn_path
+            dst_node.connection = conn_path
+
+
+    def save_selection_as_layout(self, selected_items):
+        """Save only the selected modules + internal connections to a layout file."""
+        if not selected_items:
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Selected Layout",
+            "./layouts",
+            "Layout Files (*.layout)"
+        )
+        if not path:
+            return
+
+        layout_data = {"version": 2, "modules": [], "connections": []}
+        selected_ids = set(item.module_id for item in selected_items)
+
+        # --------------------------
+        # Collect module info
+        # --------------------------
+        for item in selected_items:
+            module = item.module
+            pos = item.pos()
+            module_info = {
+                "id": item.module_id,
+                "type": module.__class__.__name__,
+                "pos": [pos.x(), pos.y()],
+            }
+            if hasattr(module, "serialize"):
+                module_info["state"] = module.serialize()
+            layout_data["modules"].append(module_info)
+
+        # --------------------------
+        # Collect ONLY internal connections
+        # --------------------------
+        for obj in self.scene.items():
+            if not isinstance(obj, ConnectionPath):
+                continue
+
+            src = getattr(obj, "start_node", None)
+            dst = getattr(obj, "end_node", None)
+            if not src or not dst:
+                continue
+
+            src_item = src.module_item
+            dst_item = dst.module_item
+            if not src_item or not dst_item:
+                continue
+
+            if src_item.module_id not in selected_ids:
+                continue
+            if dst_item.module_id not in selected_ids:
+                continue
+
+            layout_data["connections"].append({
+                "from": {
+                    "module_id": src_item.module_id,
+                    "node_index": getattr(src, "index", 0),
+                    "type": "output"
+                },
+                "to": {
+                    "module_id": dst_item.module_id,
+                    "node_index": getattr(dst, "index", 0),
+                    "type": "input"
+                },
+            })
+
+        # --------------------------
+        # Write file
+        # --------------------------
+        try:
+            with open(path, "w") as f:
+                json.dump(layout_data, f, indent=4)
+        except Exception as e:
+            QMessageBox.critical(self, "Error Saving Selection", str(e))
+
+    def copy_selection(self, selected_items):
+        """Copy selected modules + internal connections to an internal clipboard."""
+        if not selected_items:
+            return
+
+        layout_data = {"version": 2, "modules": [], "connections": []}
+        selected_ids = set(item.module_id for item in selected_items)
+
+        # --------------------------
+        # Module data
+        # --------------------------
+        for item in selected_items:
+            module = item.module
+            pos = item.pos()
+            module_info = {
+                "id": item.module_id,
+                "type": module.__class__.__name__,
+                "pos": [pos.x(), pos.y()],
+            }
+            if hasattr(module, "serialize"):
+                module_info["state"] = module.serialize()
+            layout_data["modules"].append(module_info)
+
+        # --------------------------
+        # Internal connections only
+        # --------------------------
+        for obj in self.scene.items():
+            if not isinstance(obj, ConnectionPath):
+                continue
+
+            src = getattr(obj, "start_node", None)
+            dst = getattr(obj, "end_node", None)
+            if not src or not dst:
+                continue
+
+            src_item = src.module_item
+            dst_item = dst.module_item
+            if not src_item or not dst_item:
+                continue
+
+            if src_item.module_id not in selected_ids:
+                continue
+            if dst_item.module_id not in selected_ids:
+                continue
+
+            layout_data["connections"].append({
+                "from": {
+                    "module_id": src_item.module_id,
+                    "node_index": getattr(src, "index", 0),
+                    "type": "output"
+                },
+                "to": {
+                    "module_id": dst_item.module_id,
+                    "node_index": getattr(dst, "index", 0),
+                    "type": "input"
+                },
+            })
+
+        # --------------------------
+        # Save internally
+        # --------------------------
+        self.copied_layout = layout_data
+
+    def paste_at(self, scene_pos):
+        """Paste copied modules at a given scene position."""
+        if not self.copied_layout:
+            return
+
+        layout = self.copied_layout
+        modules = layout["modules"]
+
+        if not modules:
+            return
+
+        # --------------------------
+        # Compute centroid of copied modules
+        # --------------------------
+        xs = [m["pos"][0] for m in modules]
+        ys = [m["pos"][1] for m in modules]
+        center_x = sum(xs) / len(xs)
+        center_y = sum(ys) / len(ys)
+
+        paste_offset = scene_pos - QPointF(center_x, center_y)
+
+        # Maps old module_id → new ModuleItem
+        new_map = {}
+
+        # --------------------------
+        # Create modules
+        # --------------------------
+        for mod in modules:
+            mod_type = mod["type"]
+            old_id = mod["id"]
+
+            # Find class in toolbar registry
+            cls = None
+            for folder_modules in self.toolbar_manager.module_folders.values():
+                for name, c in folder_modules:
+                    if name == mod_type:
+                        cls = c
+                        break
+                if cls:
+                    break
+            if not cls:
+                print(f"Skipping unknown module type: {mod_type}")
+                continue
+
+            module_backend = cls()
+
+            if hasattr(module_backend, "deserialize"):
+                module_backend.deserialize(mod.get("state", {}))
+
+            # Spawn UI item with your standard method
+            self.spawn_module(module_backend)
+
+            # Retrieve ModuleItem created by spawn_module
+            item = None
+            for it in self.scene.items():
+                if isinstance(it, ModuleItem) and it.module is module_backend:
+                    item = it
+                    break
+
+            if not item:
+                continue
+
+            # Assign NEW unique ID
+            item.module_id = str(uuid.uuid4())
+
+            # Apply offset
+            px, py = mod["pos"]
+            item.setPos(QPointF(px, py) + paste_offset)
+
+            new_map[old_id] = item
+
+        # --------------------------
+        # Connections
+        # --------------------------
+        for conn in layout.get("connections", []):
+            src_old = conn["from"]["module_id"]
+            dst_old = conn["to"]["module_id"]
+
+            src_idx = conn["from"]["node_index"]
+            dst_idx = conn["to"]["node_index"]
+
+            src_item = new_map.get(src_old)
+            dst_item = new_map.get(dst_old)
+            if not src_item or not dst_item:
+                continue
+
+            try:
+                src_node = src_item.output_nodes[src_idx]
+                dst_node = dst_item.input_nodes[dst_idx]
+            except Exception:
+                continue
+
+            # Backend connect() call
+            try:
+                if src_node.node_obj and dst_node.node_obj:
+                    src_node.node_obj.connect(dst_node.node_obj)
+            except Exception:
+                pass
+
+            # Create visual connection
+            conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
+            src_node.connection = conn_path
+            dst_node.connection = conn_path
+
 
 
 

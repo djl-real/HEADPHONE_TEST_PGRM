@@ -100,6 +100,10 @@ class ToolbarManager:
         load_action.triggered.connect(self.load_layout)
         file_menu.addAction(load_action)
 
+        add_action = QAction("Add Layout", self.main_window)
+        add_action.triggered.connect(self.add_layout)
+        file_menu.addAction(add_action)
+
         button = QToolButton()
         button.setText("File")
         button.setMenu(file_menu)
@@ -163,6 +167,17 @@ class ToolbarManager:
         )
         if file_path:
             self.main_window.load_layout(file_path)
+
+    def add_layout(self):
+        """Opens file dialog and delegates loading to the main window."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self.main_window,
+            "Load Layout",
+            "./layouts",
+            "Layout Files (*.layout)"
+        )
+        if file_path:
+            self.main_window.add_layout(file_path)
 
     def create_folder_buttons(self):
         """Creates a toolbar button for each folder with a dropdown menu of modules."""

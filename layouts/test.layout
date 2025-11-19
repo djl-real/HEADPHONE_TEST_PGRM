@@ -1,0 +1,46 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1843717080800",
+            "type": "Music",
+            "pos": [
+                -659.0,
+                -164.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "1843762564464",
+            "type": "Endpoint",
+            "pos": [
+                -68.0,
+                -158.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -80.0,
+                "muted": false,
+                "nickname": ""
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "1843717080800",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1843762564464",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
