@@ -8,11 +8,11 @@ import json
 import threading
 
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
+    QApplication, QMainWindow, QGraphicsView, QGraphicsScene, QMenu,
     QGraphicsItem, QGraphicsRectItem, QPinchGesture, QFileDialog, QMessageBox, QWidget, QVBoxLayout
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QWheelEvent, QPainter, QPen
+    QBrush, QColor, QWheelEvent, QPainter, QPen, QAction
 )
 from PyQt6.QtCore import (
     Qt, QPointF, QRectF, QEvent, QTimer
@@ -75,8 +75,9 @@ class WorkspaceView(QGraphicsView):
     INERTIA_DECAY = 0.93
     INERTIA_MIN_VEL = 0.5
 
-    def __init__(self, scene):
+    def __init__(self, scene, main_window=None):
         super().__init__(scene)
+        self.main_window = main_window
         self.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         self.setBackgroundBrush(QBrush(Qt.BrushStyle.NoBrush))
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
@@ -176,6 +177,43 @@ class WorkspaceView(QGraphicsView):
             event.accept()
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Right-click context menu for saving, copying, and pasting modules."""
+        menu = QMenu(self)
+
+        # Determine selected modules
+        selected_items = [
+            item for item in self.scene().selectedItems()
+            if isinstance(item, ModuleItem)
+        ]
+
+        scene_pos = self.mapToScene(event.pos())
+
+        if selected_items:
+            # Selection-dependent options
+            save_action = QAction("Save Selected as Layout…", self)
+            copy_action = QAction("Copy Selected", self)
+            menu.addAction(save_action)
+            menu.addAction(copy_action)
+
+            save_action.triggered.connect(
+                lambda: self.main_window.save_selection_as_layout(selected_items)
+            )
+            copy_action.triggered.connect(
+                lambda: self.main_window.copy_selection(selected_items)
+            )
+
+        else:
+            # No selection → Paste available
+            paste_action = QAction("Paste", self)
+            menu.addAction(paste_action)
+
+            paste_action.triggered.connect(
+                lambda: self.main_window.paste_at(scene_pos)
+            )
+
+        menu.exec(event.globalPos())
 
     # ---------- Touch ----------
     def viewportEvent(self, event):
@@ -445,7 +483,7 @@ class MainWindow(QMainWindow):
 
         # Workspace
         self.scene = WorkspaceScene()
-        self.view = WorkspaceView(self.scene)
+        self.view = WorkspaceView(self.scene, self)
 
         self.container = QWidget()
         self.setCentralWidget(self.container)
