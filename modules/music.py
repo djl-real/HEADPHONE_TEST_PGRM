@@ -58,6 +58,8 @@ class Music(AudioModule):
         MAX_TITLE_LEN = 15
         MAX_ARTIST_LEN = 15
 
+        total_time = 0
+
         for fname in os.listdir(playlist_dir):
             if fname.lower().endswith(AUDIO_EXTENSIONS):
                 path = os.path.join(playlist_dir, fname)
@@ -66,15 +68,42 @@ class Music(AudioModule):
                     title = os.path.splitext(fname)[0]
                     artist = "Unknown Artist"
                     length_seconds = 0
+
                     try:
                         meta = mutagen.File(path, easy=True)
                         if meta:
                             title = meta.get("title", [title])[0]
                             artist = meta.get("artist", [artist])[0]
+
+                            # Metadata duration
                             if hasattr(meta, "info") and hasattr(meta.info, "length"):
                                 length_seconds = int(meta.info.length)
                     except Exception:
                         pass
+
+                    # ---------------------------------------------------------
+                    # Fallback: compute actual audio duration if metadata fails
+                    # ---------------------------------------------------------
+                    if length_seconds == 0:
+                        try:
+                            from pydub import AudioSegment
+                            audio = AudioSegment.from_file(path)
+                            length_seconds = int(len(audio) / 1000)
+
+                        except Exception:
+                            try:
+                                import wave
+                                with wave.open(path, "rb") as wf:
+                                    frames = wf.getnframes()
+                                    rate = wf.getframerate()
+                                    length_seconds = int(frames / float(rate))
+                            except Exception:
+                                try:
+                                    import soundfile as sf
+                                    with sf.SoundFile(path) as f:
+                                        length_seconds = int(len(f) / f.samplerate)
+                                except Exception:
+                                    length_seconds = 0
 
                     # Clean and pad
                     title = (title.strip()[:MAX_TITLE_LEN-1] + "…") if len(title) > MAX_TITLE_LEN else title.ljust(MAX_TITLE_LEN)
@@ -87,9 +116,11 @@ class Music(AudioModule):
                     self.song_display_texts.append(display_text)
                     self.song_names.append(fname)
                     self.songs.append(None)  # Placeholder for lazy loading
+                    total_time += length_seconds
 
                 except Exception as e:
                     print(f"[Music] Failed to scan {fname}: {e}")
+
 
         # Populate UI list
         self.populate_list_widget()
@@ -97,6 +128,11 @@ class Music(AudioModule):
         # Switch to the songs playback screen
         if hasattr(self, "stack") and hasattr(self, "song_screen"):
             self.stack.setCurrentWidget(self.song_screen)
+
+        # Print playlist length
+        mins, secs = divmod(total_time, 60)
+        duration = f"{mins:02d}:{secs:02d}"
+        print("Playlist length: " + duration)
 
     def populate_list_widget(self):
         """Populate the QListWidget with song display texts."""
