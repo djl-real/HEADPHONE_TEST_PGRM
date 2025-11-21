@@ -28,6 +28,7 @@ class Music(AudioModule):
         self.playhead = 0.0
         self.pitch = 1.0
         self.reverse = False
+        self.loop = False
         self.scrubbing_user = False
 
         # Data
@@ -173,10 +174,6 @@ class Music(AudioModule):
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
 
-    def stop_playback(self):
-        self.playing = False
-        self.playhead = 0.0
-
     def generate(self, frames: int) -> np.ndarray:
         out = np.zeros((frames, 2), dtype=np.float32)
         if self.current_index is None or not self.playing:
@@ -206,8 +203,11 @@ class Music(AudioModule):
 
         # Stop if reached end or beginning
         if self.playhead >= n_samples - 1 or self.playhead <= 0:
-            self.playing = False
-            self.playhead = max(0, min(self.playhead, n_samples - 1))
+            if not self.reverse:
+                self.playing = False
+                self.playhead = max(0, min(self.playhead, n_samples - 1))
+            else:
+                self.playhead = 0.0
 
         return out
 
@@ -283,17 +283,17 @@ class Music(AudioModule):
 
         # Buttons
         btn_layout = QHBoxLayout()
-        play_btn = QPushButton("Play/Pause")
-        stop_btn = QPushButton("Stop")
         reverse_btn = QPushButton("Reverse")
-        btn_layout.addWidget(play_btn)
-        btn_layout.addWidget(stop_btn)
+        play_btn = QPushButton("Play/Pause")
+        loop_btn = QPushButton("Loop")
         btn_layout.addWidget(reverse_btn)
+        btn_layout.addWidget(play_btn)
+        btn_layout.addWidget(loop_btn)
         layout.addLayout(btn_layout)
 
         play_btn.clicked.connect(lambda: self.toggle_play(self.list_widget.currentRow()))
-        stop_btn.clicked.connect(self.stop_playback)
         reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
+        loop_btn.clicked.connect(lambda: setattr(self, "loop", not self.loop))
 
         # Pitch slider
         layout.addWidget(QLabel("Pitch"))
