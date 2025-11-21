@@ -829,20 +829,20 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error Adding Layout", str(e))
             return
 
-        module_map = {}  # new module_id → ModuleItem
-
-        # Collect existing IDs to avoid collisions
-        existing_ids = {item.module_id for item in self.scene.items() if isinstance(item, ModuleItem)}
+        module_map = {}       # new_id → ModuleItem
+        id_remap = {}         # old_id → new_id   (important!)
+        existing_ids = {item.module_id for item in self.scene.items()
+                        if isinstance(item, ModuleItem)}
 
         # --------------------------
         # Create modules
         # --------------------------
         for mod_info in layout_data.get("modules", []):
             mod_type = mod_info.get("type")
-            module_id = mod_info.get("id")
+            old_id = mod_info.get("id")
             pos_x, pos_y = mod_info.get("pos", [0, 0])
 
-            # Look up class in toolbar registry
+            # Find class
             cls = None
             for folder_modules in self.toolbar_manager.module_folders.values():
                 for name, c in folder_modules:
@@ -856,17 +856,15 @@ class MainWindow(QMainWindow):
                 print(f"Skipping unknown module type: {mod_type}")
                 continue
 
-            # Instantiate module
+            # Instantiate module backend
             module = cls()
 
-            # Load module state
             if hasattr(module, "deserialize"):
                 module.deserialize(mod_info.get("state", {}))
 
-            # Spawn via proper helper
             self.spawn_module(module)
 
-            # Retrieve the new ModuleItem from the scene
+            # Retrieve ModuleItem
             item = None
             for it in self.scene.items():
                 if isinstance(it, ModuleItem) and it.module is module:
@@ -877,23 +875,24 @@ class MainWindow(QMainWindow):
                 print("Error: ModuleItem was not created by spawn_module()!")
                 continue
 
-            # Ensure unique ID if collision occurs
-            if module_id in existing_ids:
-                module_id = str(uuid.uuid4())
+            # Generate new ID if collision → REMEMBER THE MAPPING!
+            new_id = old_id
+            if new_id in existing_ids:
+                new_id = str(uuid.uuid4())
+            id_remap[old_id] = new_id
 
-            item.module_id = module_id
-
-            # Apply offset to avoid overlapping existing modules
+            item.module_id = new_id
             item.setPos(QPointF(pos_x, pos_y) + offset)
 
-            module_map[module_id] = item
+            module_map[new_id] = item
 
         # --------------------------
-        # Recreate connections
+        # Create connections
         # --------------------------
         for conn in layout_data.get("connections", []):
-            src_id = conn["from"]["module_id"]
-            dst_id = conn["to"]["module_id"]
+            # remap IDs so repeated layouts still connect properly
+            src_id = id_remap.get(conn["from"]["module_id"], conn["from"]["module_id"])
+            dst_id = id_remap.get(conn["to"]["module_id"], conn["to"]["module_id"])
             src_idx = conn["from"]["node_index"]
             dst_idx = conn["to"]["node_index"]
 
@@ -902,24 +901,24 @@ class MainWindow(QMainWindow):
             if not src_item or not dst_item:
                 continue
 
-            # Try retrieving nodes
             try:
                 src_node = src_item.output_nodes[src_idx]
                 dst_node = dst_item.input_nodes[dst_idx]
             except Exception:
                 continue
 
-            # Backend connect
+            # Backend connection
             if src_node.node_obj and dst_node.node_obj:
                 try:
                     src_node.node_obj.connect(dst_node.node_obj)
                 except Exception:
                     pass
 
-            # UI connection
+            # UI wire
             conn_path = ConnectionPath(src_node, dst_node, scene=self.scene)
             src_node.connection = conn_path
             dst_node.connection = conn_path
+
 
 
     def save_selection_as_layout(self, selected_items):

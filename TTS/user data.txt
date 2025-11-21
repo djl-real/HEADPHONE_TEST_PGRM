@@ -1,0 +1,13 @@
+Data report for user
+
+Daniel Landau
+Date of birth: August 12th, 2001
+
+Hope Dalton
+Date of birth: January 7th, 1990
+Status: DECEASED
+Date of death: October 8th, 2006
+
+Victoria Hwang
+Date of birth: April 7th, 1957
+Status: ALIVE
