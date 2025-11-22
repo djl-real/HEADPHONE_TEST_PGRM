@@ -1,0 +1,158 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1931049381824",
+            "type": "Endpoint",
+            "pos": [
+                2671.756521739131,
+                2363.7891304347836
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": -23.299999999999997,
+                "muted": false,
+                "nickname": "crossconv"
+            }
+        },
+        {
+            "id": "1931048897104",
+            "type": "Music",
+            "pos": [
+                1407.1413043478258,
+                2016.2673913043486
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "1931048905104",
+            "type": "Music",
+            "pos": [
+                1403.1565217391303,
+                2580.05
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "1930688747536",
+            "type": "Split",
+            "pos": [
+                1857.5891304347824,
+                2227.319565217391
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2
+            }
+        },
+        {
+            "id": "1931048937040",
+            "type": "Convolve",
+            "pos": [
+                2119.0760869565197,
+                2526.3543478260867
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "mix": 1.0
+            }
+        },
+        {
+            "id": "1930688748816",
+            "type": "Crossfade",
+            "pos": [
+                2391.0565217391295,
+                2202.2673913043463
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.648
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "1930688748816",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1931049381824",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1931048905104",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1931048937040",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1931048937040",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1930688748816",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1930688747536",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1930688748816",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1930688747536",
+                "node_index": 1,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1931048937040",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1931048897104",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1930688747536",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}

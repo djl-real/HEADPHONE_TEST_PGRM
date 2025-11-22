@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QSlider, QAbstractItemView, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontDatabase, QFont
 from audio_module import AudioModule
 import mutagen
 
@@ -39,6 +39,7 @@ class Music(AudioModule):
 
         # Load playlist immediately
         self.load_playlist()
+
 
     # --- Playlist scanning ---
     def load_playlist(self, folder_name=None):
@@ -203,7 +204,7 @@ class Music(AudioModule):
 
         # Stop if reached end or beginning
         if self.playhead >= n_samples - 1 or self.playhead <= 0:
-            if not self.reverse:
+            if not self.loop:
                 self.playing = False
                 self.playhead = max(0, min(self.playhead, n_samples - 1))
             else:
@@ -213,7 +214,116 @@ class Music(AudioModule):
 
 
     # --- UI ---
+
+    def make_circle_button(self, icon_char, diameter=48, bg="#444", fg="white"):
+        btn = QPushButton(icon_char)
+        btn.setFixedSize(diameter, diameter)
+        btn.setFont(QFont("Segoe MDL2 Assets"))
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {fg};
+                font-size: 20px;
+                border-radius: {diameter//2}px;
+                border: 2px solid #222;
+            }}
+            QPushButton:hover {{
+                background-color: #666;
+            }}
+        """)
+        return btn
+
+    def update_control_icons(self):
+        # Play/Pause icon
+        if self.playing:
+            self.play_btn.setText("\uE769")               # pause icon
+            self.play_btn.setStyleSheet(self.play_active_style)
+        else:
+            self.play_btn.setText("▶")               # play icon
+            self.play_btn.setStyleSheet(self.play_idle_style)
+
+        # Reverse icon
+        if self.reverse:
+            self.reverse_btn.setText("⮂")           # "reverse" symbol
+            self.reverse_btn.setStyleSheet(self.reverse_active_style)
+        else:
+            self.reverse_btn.setText("⮀")           # "forward" symbol
+            self.reverse_btn.setStyleSheet(self.reverse_idle_style)
+
+        # Loop icon
+        if self.loop:
+            self.loop_btn.setText("\uE8EE")              # loop enabled
+            self.loop_btn.setStyleSheet(self.loop_active_style)
+        else:
+            self.loop_btn.setText("⟳")               # loop off
+            self.loop_btn.setStyleSheet(self.loop_idle_style)
+
+
     def get_ui(self) -> QWidget:
+
+        # Styles for stateful circular buttons
+        self.play_idle_style = """
+        QPushButton {
+            background-color: #444;
+            color: white;
+            font-size: 20px;
+            border-radius: 24px;
+            border: 2px solid #222;
+        }
+        QPushButton:hover { background-color: #666; }
+        """
+
+        self.play_active_style = """
+        QPushButton {
+            background-color: #2ecc71;
+            color: black;
+            font-size: 20px;
+            border-radius: 24px;
+            border: 2px solid #1e8c4a;
+        }
+        """
+
+        self.reverse_idle_style = """
+        QPushButton {
+            background-color: #444;
+            color: white;
+            font-size: 20px;
+            border-radius: 16px;
+            border: 2px solid #222;
+        }
+        QPushButton:hover { background-color: #666; }
+        """
+
+        self.reverse_active_style = """
+        QPushButton {
+            background-color: #e67e22;
+            color: black;
+            font-size: 20px;
+            border-radius: 16px;
+            border: 2px solid #a34f00;
+        }
+        """
+
+        self.loop_idle_style = """
+        QPushButton {
+            background-color: #444;
+            color: white;
+            font-size: 20px;
+            border-radius: 16px;
+            border: 2px solid #222;
+        }
+        QPushButton:hover { background-color: #666; }
+        """
+
+        self.loop_active_style = """
+        QPushButton {
+            background-color: #3498db;
+            color: black;
+            font-size: 20px;
+            border-radius: 16px;
+            border: 2px solid #1f5e8c;
+        }
+        """
         widget = QWidget()
         main_layout = QVBoxLayout(widget)
 
@@ -283,17 +393,25 @@ class Music(AudioModule):
 
         # Buttons
         btn_layout = QHBoxLayout()
-        reverse_btn = QPushButton("Reverse")
-        play_btn = QPushButton("Play/Pause")
-        loop_btn = QPushButton("Loop")
-        btn_layout.addWidget(reverse_btn)
-        btn_layout.addWidget(play_btn)
-        btn_layout.addWidget(loop_btn)
+
+        # Circle buttons
+        self.reverse_btn = self.make_circle_button("⮀", 32)
+        self.play_btn = self.make_circle_button("▶")
+        self.loop_btn = self.make_circle_button("⟳", 32)
+
+        btn_layout.addWidget(self.reverse_btn)
+        btn_layout.addWidget(self.play_btn)
+        btn_layout.addWidget(self.loop_btn)
         layout.addLayout(btn_layout)
 
-        play_btn.clicked.connect(lambda: self.toggle_play(self.list_widget.currentRow()))
-        reverse_btn.clicked.connect(lambda: setattr(self, "reverse", not self.reverse))
-        loop_btn.clicked.connect(lambda: setattr(self, "loop", not self.loop))
+        # Connect actions
+        self.play_btn.clicked.connect(lambda: (self.toggle_play(self.list_widget.currentRow()), self.update_control_icons()))
+        self.reverse_btn.clicked.connect(lambda: (setattr(self, "reverse", not self.reverse), self.update_control_icons()))
+        self.loop_btn.clicked.connect(lambda: (setattr(self, "loop", not self.loop), self.update_control_icons()))
+
+        # Initialize icons
+        self.update_control_icons()
+
 
         # Pitch slider
         layout.addWidget(QLabel("Pitch"))
@@ -356,7 +474,7 @@ class Music(AudioModule):
                     self.scrub_slider.blockSignals(False)
 
                     remaining_samples = len(track) - int(self.playhead)
-                    remaining_seconds = remaining_samples / self.sample_rate
+                    remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
                     mins, secs = divmod(int(remaining_seconds), 60)
                     self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}")
 
