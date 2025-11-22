@@ -2,6 +2,7 @@
 import os
 import numpy as np
 import soundfile as sf
+import librosa
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
     QSlider, QAbstractItemView, QStackedWidget
@@ -30,6 +31,7 @@ class Music(AudioModule):
         self.reverse = False
         self.loop = False
         self.scrubbing_user = False
+        self.song_bpm = 0
 
         # Data
         self.songs = []               # Will hold np.ndarray or None (lazy)
@@ -143,6 +145,16 @@ class Music(AudioModule):
             for display_text in self.song_display_texts:
                 self.list_widget.addItem(display_text)
 
+    def detect_bpm(self, path):
+        try:
+            import librosa
+            y, sr = librosa.load(path, mono=True)
+            tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+            return int(tempo)
+        except Exception as e:
+            print("[Music] BPM detection failed:", e)
+            return None
+        
     # --- Lazy audio loading ---
     def load_audio_file(self, index):
         """Load audio data into memory only when needed."""
@@ -160,6 +172,8 @@ class Music(AudioModule):
             idx = idx[idx < len(data)]
             data = data[idx]
         self.songs[index] = data
+
+        self.song_bpm = self.detect_bpm(path)
         return data
 
     # --- Playback ---
@@ -441,7 +455,7 @@ class Music(AudioModule):
         layout.addLayout(tick_layout)
 
         # Scrub slider + label
-        self.scrub_label = QLabel("Remaining: 00:00")
+        self.scrub_label = QLabel("Remaining: 00:00  |  BPM: ---")
         layout.addWidget(self.scrub_label)
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
@@ -476,7 +490,9 @@ class Music(AudioModule):
                     remaining_samples = len(track) - int(self.playhead)
                     remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
                     mins, secs = divmod(int(remaining_seconds), 60)
-                    self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}")
+
+                    bpm = self.song_bpm * self.pitch
+                    self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}  |  BPM: {bpm:06.2f}")
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
         self.update_timer.start()
