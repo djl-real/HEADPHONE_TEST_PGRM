@@ -1,0 +1,133 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2224320107856",
+            "type": "Endpoint",
+            "pos": [
+                1026.0,
+                -26.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": 0.09999999999999432,
+                "muted": false,
+                "nickname": ""
+            }
+        },
+        {
+            "id": "2224317791408",
+            "type": "Music",
+            "pos": [
+                -563.0,
+                -132.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2224317778640",
+            "type": "Formant",
+            "pos": [
+                320.0,
+                268.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "shift_ratio": 0.25
+            }
+        },
+        {
+            "id": "2224320109200",
+            "type": "Split",
+            "pos": [
+                -23.0,
+                110.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2
+            }
+        },
+        {
+            "id": "2224320109536",
+            "type": "Crossfade",
+            "pos": [
+                650.0,
+                131.0
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.284
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2224320109536",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2224320107856",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2224317778640",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2224320109536",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2224320109200",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2224320109536",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2224320109200",
+                "node_index": 1,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2224317778640",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2224317791408",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2224320109200",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}

@@ -22,6 +22,7 @@ from modules.samplehold import SampleHoldMod
 from modules.multiply import Multiply
 from modules.convolve import Convolve
 from modules.slowdown import Slowdown
+from modules.formant import Formant
 
 
 class ToolbarManager:
@@ -76,7 +77,8 @@ class ToolbarManager:
                 ("ReverseDelay", ReverseDelay),
                 ("SampleHoldMod", SampleHoldMod),
                 ("Multiply", Multiply),
-                ("Convolve", Convolve)
+                ("Convolve", Convolve),
+                ("Formant", Formant)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
