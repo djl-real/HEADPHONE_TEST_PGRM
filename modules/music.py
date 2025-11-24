@@ -4,6 +4,7 @@ import numpy as np
 import soundfile as sf
 import librosa
 import threading
+import traceback
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
     QSlider, QStackedWidget
@@ -17,6 +18,7 @@ AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
 def detect_bpm(path):
     """Fast BPM detector using onset envelope autocorrelation."""
+    print("detect_bpm ran")
     try:
         # Load only 30 seconds, downsampled to 8 kHz
         y, sr = librosa.load(path, mono=True, sr=8000, duration=30)
@@ -25,11 +27,14 @@ def detect_bpm(path):
         onset_env = librosa.onset.onset_strength(y=y, sr=sr)
 
         # Fast tempo estimation from onset autocorrelation
-        tempo = librosa.feature.rhythm.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
+        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
 
+        print("returning tempo")
         return int(tempo[0]) if len(tempo) > 0 else None
 
-    except Exception:
+    except Exception as e:
+        print("err in detect_bpm:", e)
+        traceback.print_exc()
         return None
 
 class Music(AudioModule):
