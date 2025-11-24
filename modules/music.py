@@ -18,7 +18,6 @@ AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
 def detect_bpm(path):
     """Fast BPM detector using onset envelope autocorrelation."""
-    print("detect_bpm ran")
     try:
         # Load only 30 seconds, downsampled to 8 kHz
         y, sr = librosa.load(path, mono=True, sr=8000, duration=30)
@@ -29,11 +28,9 @@ def detect_bpm(path):
         # Fast tempo estimation from onset autocorrelation
         tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
 
-        print("returning tempo")
         return int(tempo[0]) if len(tempo) > 0 else None
 
     except Exception as e:
-        print("err in detect_bpm:", e)
         traceback.print_exc()
         return None
 
