@@ -139,6 +139,60 @@ class NodeCircle(QGraphicsEllipseItem):
         # Temporary connection during drag
         self.temp_connection: ConnectionPath | None = None
 
+
+    def connect(self, dst: "NodeCircle"):
+        """
+        Connect this output NodeCircle to a destination input NodeCircle.
+        Handles:
+        - backend connect()
+        - disconnecting any previous wires
+        - creating new ConnectionPath
+        - updating UI link
+        """
+        # Validate types
+        if self.node_type != "output" or dst.node_type != "input":
+            print("⚠️ NodeCircle.connect: invalid direction")
+            return False
+
+        sc = self.scene()
+        if sc is None:
+            print("⚠️ NodeCircle.connect: no scene")
+            return False
+
+        # Disconnect old connections on both ends
+        if self.connection:
+            try:
+                self.connection.disconnect()
+            except Exception:
+                pass
+            self.connection = None
+
+        if dst.connection:
+            try:
+                dst.connection.disconnect()
+            except Exception:
+                pass
+            dst.connection = None
+
+        # Backend connect
+        if self.node_obj and dst.node_obj:
+            try:
+                self.node_obj.connect(dst.node_obj)
+            except Exception:
+                traceback.print_exc()
+                return False
+
+        # Create new UI path
+        try:
+            new_path = ConnectionPath(self, dst, scene=sc)
+            self.connection = new_path
+            dst.connection = new_path
+            new_path.update_path()
+        except Exception:
+            traceback.print_exc()
+            return False
+
+        return True
     # ------------------- Interaction Events -------------------
 
     def mousePressEvent(self, event):
@@ -394,8 +448,37 @@ class ModuleItem(QGraphicsRectItem):
         self.close_button.setPos(width - 20, 2)
 
     def cleanup(self):
-        """Safely clean up and remove module from scene."""
-        self.main_window.destroy_module(self)
+        """
+        Safely clean up and remove module from scene.
+
+        NEW FEATURE:
+        If this module has at least one connected input and one connected output,
+        auto-connect inbound node to outbound node before removing the module.
+        """
+
+        # --------------------------------------------------------------
+        # 1. Detect upstream and downstream connections (ONLY if both exist)
+        # --------------------------------------------------------------
+        upstream_node = None
+        downstream_node = None
+
+        # Find first connected input (upstream)
+        for n in self.input_nodes:
+            if n.connection and n.connection.start_node:
+                upstream_node = n.connection.start_node
+                break
+
+        # Find first connected output (downstream)
+        for n in self.output_nodes:
+            if n.connection and n.connection.end_node:
+                downstream_node = n.connection.end_node
+                break
+
+        should_autobridge = upstream_node is not None and downstream_node is not None
+
+        # --------------------------------------------------------------
+        # 2. Disconnect this module's connections BEFORE removing UI nodes
+        # --------------------------------------------------------------
         for node in self.input_nodes + self.output_nodes:
             if node.connection:
                 try:
@@ -403,6 +486,7 @@ class ModuleItem(QGraphicsRectItem):
                 except Exception:
                     pass
                 node.connection = None
+
             if getattr(node, "temp_connection", None):
                 try:
                     node.temp_connection.disconnect()
@@ -410,11 +494,28 @@ class ModuleItem(QGraphicsRectItem):
                     pass
                 node.temp_connection = None
 
+        # --------------------------------------------------------------
+        # 3. Automatically reconnect upstream → downstream
+        # --------------------------------------------------------------
+        if should_autobridge:
+            try:
+                # The upstream is always an *output node*
+                # The downstream is always an *input node*
+                upstream_node.connect(downstream_node)
+            except Exception:
+                traceback.print_exc()
+
+        # --------------------------------------------------------------
+        # 4. Backend module destruction
+        # --------------------------------------------------------------
         try:
             self.module.destroy()
         except Exception:
             pass
 
+        # --------------------------------------------------------------
+        # 5. Remove UI items
+        # --------------------------------------------------------------
         sc = self.scene()
         if sc:
             if self._proxy_widget:
@@ -422,14 +523,20 @@ class ModuleItem(QGraphicsRectItem):
                     sc.removeItem(self._proxy_widget)
                 except Exception:
                     pass
+
             QTimer.singleShot(1, lambda: sc.removeItem(self) if self.scene() else None)
 
+        # --------------------------------------------------------------
+        # 6. Final field cleanup
+        # --------------------------------------------------------------
+        self.main_window.destroy_module(self)
         self.module = None
         self.input_nodes = []
         self.output_nodes = []
         self.input_node = None
         self.output_node = None
         self._proxy_widget = None
+
 
     def itemChange(self, change, value):
         """Update connections and highlight overlapping paths while moving."""
