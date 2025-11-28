@@ -476,8 +476,29 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        p = psutil.Process(os.getpid())
-        p.nice(psutil.HIGH_PRIORITY_CLASS)
+        # --- Cross-platform process priority ---
+        try:
+            p = psutil.Process(os.getpid())
+
+            if psutil.WIN32:
+                # Windows: HIGH_PRIORITY_CLASS
+                p.nice(psutil.HIGH_PRIORITY_CLASS)
+
+            else:
+                # Linux / macOS: negative nice value = higher priority
+                # Requires root for values < -10, so we clamp safely.
+                try:
+                    os.nice(-10)   # attempt to raise priority
+                except PermissionError:
+                    # If running unprivileged, use the highest allowed
+                    current_nice = os.nice(0)
+                    if current_nice > 0:
+                        os.nice(-current_nice)
+
+        except Exception:
+            # Priority tweaks are optional — never fail on this.
+            pass
+
 
         self.setWindowTitle("HEADPHONE_TEST_PGRM")
         self.resize(1200, 800)
