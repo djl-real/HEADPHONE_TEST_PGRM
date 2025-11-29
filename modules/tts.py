@@ -4,6 +4,7 @@ import soundfile as sf
 import tempfile
 import pyttsx3
 import gc
+import platform
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QTextEdit, QPushButton, QComboBox, QSlider,
@@ -21,7 +22,19 @@ class TTS(AudioModule):
         super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
 
-        self.voices = pyttsx3.init().getProperty("voices")
+        engine = pyttsx3.init()
+        all_voices = engine.getProperty("voices")
+
+        if platform.system().lower() == "linux":
+            # Linux has MANY voices — filter to only English ones
+            self.voices = [
+                v for v in all_voices 
+                if "english" in v.name.lower() or "en_" in v.id.lower()
+            ]
+        else:
+            # Windows/macOS keep full list
+            self.voices = all_voices
+
         self.current_voice = self.voices[0].id if self.voices else None
 
         self.buffer = np.zeros((0, 2), dtype=np.float32)
@@ -31,7 +44,6 @@ class TTS(AudioModule):
         self.pitch = 1.0
         self.loop = False
 
-        # --- NEW ---
         self.tts_folder = tts_folder
         self.tts_files = []
         self.selected_file_lines = []
@@ -146,14 +158,20 @@ class TTS(AudioModule):
         layout.addWidget(text_input)
 
         # ---------------- Voice Dropdown ----------------
+
         layout.addWidget(QLabel("Select voice:"))
         voice_dropdown = QComboBox()
 
+        # Fill with filtered voices
         for v in self.voices:
             voice_dropdown.addItem(v.name)
-        voice_dropdown.currentIndexChanged.connect(
-            lambda i: setattr(self, "current_voice", self.voices[i].id)
-        )
+
+        def on_voice_changed(i):
+            if 0 <= i < len(self.voices):
+                self.current_voice = self.voices[i].id
+
+        voice_dropdown.currentIndexChanged.connect(on_voice_changed)
+        layout.addWidget(voice_dropdown)
         layout.addWidget(voice_dropdown)
 
         # ---------------- Pitch Slider ----------------
