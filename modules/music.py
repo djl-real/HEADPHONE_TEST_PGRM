@@ -3,9 +3,11 @@ import os
 import numpy as np
 import soundfile as sf
 import librosa
+import threading
+import traceback
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
-    QSlider, QAbstractItemView, QStackedWidget
+    QSlider, QStackedWidget
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFontDatabase, QFont
@@ -14,6 +16,23 @@ import mutagen
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
+def detect_bpm(path):
+    """Fast BPM detector using onset envelope autocorrelation."""
+    try:
+        # Load only 30 seconds, downsampled to 8 kHz
+        y, sr = librosa.load(path, mono=True, sr=8000, duration=30)
+
+        # Onset envelope
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+
+        # Fast tempo estimation from onset autocorrelation
+        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
+
+        return int(tempo[0]) if len(tempo) > 0 else None
+
+    except Exception as e:
+        traceback.print_exc()
+        return None
 
 class Music(AudioModule):
     """Music player module with playlist, scrubbing, reverse, and pitch control."""
@@ -31,7 +50,7 @@ class Music(AudioModule):
         self.reverse = False
         self.loop = False
         self.scrubbing_user = False
-        self.song_bpm = 0
+        self.song_bpm = None
 
         # Data
         self.songs = []               # Will hold np.ndarray or None (lazy)
@@ -90,8 +109,9 @@ class Music(AudioModule):
                     # ---------------------------------------------------------
                     if length_seconds == 0:
                         try:
+                            import soundfile as sf
                             with sf.SoundFile(path) as f:
-                                length_seconds = int(len(f) / f.samplerate)
+                                    length_seconds = int(len(f) / f.samplerate)
                         except Exception:
                             length_seconds = 0
 
@@ -130,37 +150,47 @@ class Music(AudioModule):
             self.list_widget.clear()
             for display_text in self.song_display_texts:
                 self.list_widget.addItem(display_text)
-
-    def detect_bpm(self, path):
-        try:
-            import librosa
-            y, sr = librosa.load(path, mono=True)
-            tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-            return int(tempo)
-        except Exception as e:
-            print("[Music] BPM detection failed:", e)
-            return None
         
-    # --- Lazy audio loading ---
+    def start_bpm_thread(self, path):
+        self.song_bpm = None  # mark as “not ready”
+
+        def worker():
+            try:
+                bpm = detect_bpm(path)
+            except Exception as e:
+                print("BPM thread error:", e)
+                bpm = 0.0
+
+            # Assign *on the class* (not returned!)
+            self.song_bpm = bpm
+
+        t = threading.Thread(target=worker, daemon=True)
+        t.start()
+
     def load_audio_file(self, index):
-        """Load audio data into memory only when needed."""
         if self.songs[index] is not None:
             return self.songs[index]
 
         fname = self.song_names[index]
         path = os.path.join(self.current_playlist_path, fname)
         data, fs = sf.read(path, dtype="float32")
+
         if data.ndim == 1:
             data = np.column_stack((data, data))
+
         if fs != self.sample_rate:
             ratio = self.sample_rate / fs
             idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
             idx = idx[idx < len(data)]
             data = data[idx]
+
         self.songs[index] = data
 
-        self.song_bpm = self.detect_bpm(path)
+        # Start BPM detection thread
+        self.start_bpm_thread(path)
+
         return data
+
 
     # --- Playback ---
     def toggle_play(self, index: int):
@@ -477,8 +507,15 @@ class Music(AudioModule):
                     remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
                     mins, secs = divmod(int(remaining_seconds), 60)
 
-                    bpm = self.song_bpm * self.pitch
-                    self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}  |  BPM: {bpm:06.2f}")
+                    # Protect against None while BPM thread runs
+                    if self.song_bpm is None:
+                        bpm_text = "---"
+                    else:
+                        bpm_text = f"{self.song_bpm * self.pitch:06.2f}"
+
+                    self.scrub_label.setText(
+                        f"Remaining: {mins:02d}:{secs:02d}  |  BPM: {bpm_text}"
+                    )
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
         self.update_timer.start()
