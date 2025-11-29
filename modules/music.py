@@ -90,24 +90,10 @@ class Music(AudioModule):
                     # ---------------------------------------------------------
                     if length_seconds == 0:
                         try:
-                            from pydub import AudioSegment
-                            audio = AudioSegment.from_file(path)
-                            length_seconds = int(len(audio) / 1000)
-
+                            with sf.SoundFile(path) as f:
+                                length_seconds = int(len(f) / f.samplerate)
                         except Exception:
-                            try:
-                                import wave
-                                with wave.open(path, "rb") as wf:
-                                    frames = wf.getnframes()
-                                    rate = wf.getframerate()
-                                    length_seconds = int(frames / float(rate))
-                            except Exception:
-                                try:
-                                    import soundfile as sf
-                                    with sf.SoundFile(path) as f:
-                                        length_seconds = int(len(f) / f.samplerate)
-                                except Exception:
-                                    length_seconds = 0
+                            length_seconds = 0
 
                     # Clean and pad
                     title = (title.strip()[:MAX_TITLE_LEN-1] + "…") if len(title) > MAX_TITLE_LEN else title.ljust(MAX_TITLE_LEN)

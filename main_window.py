@@ -515,7 +515,7 @@ class MainWindow(QMainWindow):
 
 
         # --- Ring buffer configuration ---
-        self.ring_size = 8  # Number of blocks ahead to prefill
+        self.ring_size = 4  # Number of blocks ahead to prefill
         self.ring_buffer = np.zeros((self.ring_size, self.block_size, 2), dtype=np.float32)
         self.write_index = 0  # Worker writes here
         self.read_index = 0   # Callback reads here

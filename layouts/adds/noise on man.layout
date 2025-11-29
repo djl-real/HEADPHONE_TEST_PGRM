@@ -1,0 +1,298 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2152978066672",
+            "type": "Bandpass",
+            "pos": [
+                -902.1410372318567,
+                825.1684885345608
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "lp_freq": 10261,
+                "hp_freq": 1
+            }
+        },
+        {
+            "id": "2152978063312",
+            "type": "Bitcrusher",
+            "pos": [
+                -1353.5688122898364,
+                558.1540053101584
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "bit_depth": 7,
+                "sample_rate_reduction": 8843,
+                "prev_sample": [
+                    -0.0546875,
+                    -0.0546875
+                ],
+                "phase": 2
+            }
+        },
+        {
+            "id": "2152978065664",
+            "type": "Crossfade",
+            "pos": [
+                -47.83105531355302,
+                625.4590408481961
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 0.506
+            }
+        },
+        {
+            "id": "2152978164112",
+            "type": "Endpoint",
+            "pos": [
+                888.705010523833,
+                511.12129441361344
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "volume_db": 4.599999999999994,
+                "muted": false,
+                "nickname": "effects of noise on man"
+            }
+        },
+        {
+            "id": "2152978064992",
+            "type": "Static",
+            "pos": [
+                -1311.7736500369858,
+                840.9488781129286
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1
+            }
+        },
+        {
+            "id": "2152978065328",
+            "type": "Multiply",
+            "pos": [
+                -317.60910659981926,
+                835.0312320210408
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "sample_rate": 44100,
+                "crossfade": 1.0
+            }
+        },
+        {
+            "id": "2152493989040",
+            "type": "TTS",
+            "pos": [
+                -1865.7501438316758,
+                299.3587144128272
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "text": "Anthony and Ackerman (34) found that rats, mice, and guinea pigs all showed physiological arousal or stress to intense broadband noise (110 dB to 140 dB), but that behavioral and histological data showed no harmful effects, and that satisfactory adaptation had occurred. However, while the noise by itself was not harmful, it appeared to reduce survival time when coupled with food restriction for those animals showing audiogenic seizures (muscular spasms and \"fits\", sometimes coupled with unconsciousness that are peculiar to certain strains of mice and rats, particularly when suffering from middle ear infections). Because of the audiogenic seizure syndrome, it is not justified to generalize to man the results of auditory-stress experiments performed with rats. It appears that rats or mice that experience these seizures suffer abnormal auditory systems and/or infections (429a) and must be specially bred (11 la).",
+                "current_voice": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Speech\\Voices\\Tokens\\TTS_MS_EN-US_ZIRA_11.0",
+                "pitch": 0.6783021637238359,
+                "loop": false
+            }
+        },
+        {
+            "id": "2152978069024",
+            "type": "Reverb",
+            "pos": [
+                279.678638941399,
+                586.7202268431004
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "mix": 0.45,
+                "decay": 0.5,
+                "room_size": 0.5
+            }
+        },
+        {
+            "id": "2152978063648",
+            "type": "Split",
+            "pos": [
+                -515.5214925618477,
+                646.32407331306
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2
+            }
+        },
+        {
+            "id": "2152978066336",
+            "type": "Slowdown",
+            "pos": [
+                -1047.3863729760833,
+                582.5778745787787
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "frame_interval": 0
+            }
+        },
+        {
+            "id": "2152978067344",
+            "type": "Pan",
+            "pos": [
+                613.3078449905483,
+                626.8424385633273
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "pan": -1.0
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2152978069024",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978067344",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978065664",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978069024",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978066336",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978063648",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978067344",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978164112",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978066672",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978065328",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978064992",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978066672",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978063312",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978066336",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978065328",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978065664",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978063648",
+                "node_index": 1,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978065328",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152978063648",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978065664",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2152493989040",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2152978063312",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
