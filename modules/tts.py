@@ -22,7 +22,7 @@ class TTS(AudioModule):
         super().__init__(input_count=0, output_count=1)
         self.sample_rate = sample_rate
 
-        engine = pyttsx3.init()
+        engine = pyttsx3.init("festival")
         all_voices = engine.getProperty("voices")
 
         if platform.system().lower() == "linux":

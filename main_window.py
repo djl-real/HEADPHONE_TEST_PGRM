@@ -84,6 +84,9 @@ class WorkspaceView(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
         self.zoom_factor = 1.15
 
+        self._pan_accum_x = 0
+        self._pan_accum_y = 0
+
         # Mouse panning
         self.last_mouse_pos = None
         self.panning = False
@@ -120,6 +123,17 @@ class WorkspaceView(QGraphicsView):
 
     # ---------- Mouse ----------
     def wheelEvent(self, event: QWheelEvent):
+        # --- First try touchpad handling ---
+        if self._handle_touchpad_wheel(event):
+            return
+        print("fallback")
+        # --- Fallback: mouse wheel zoom ---
+        # zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
+        # old_pos = self.mapToScene(event.position().toPoint())
+        # self.scale(zoom, zoom)
+        # new_pos = self.mapToScene(event.position().toPoint())
+        # delta = new_pos - old_pos
+        # self.translate(delta.x(), delta.y())
         zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
         self.scale(zoom, zoom)
 
@@ -298,6 +312,100 @@ class WorkspaceView(QGraphicsView):
             return True
 
         return super().event(event)
+    
+    # ---------- Touchpad ----------
+    def _handle_touchpad_wheel(self, event: QWheelEvent) -> bool:
+        SCROLL_SCALE = 2
+
+        pixel = event.pixelDelta()
+        angle = event.angleDelta()
+
+        print(pixel)
+
+        # --- Reliable detection of real mouse wheel ---
+        is_real_mouse_wheel = (
+            abs(angle.y()) >= 120 and pixel.isNull()
+        )
+        if is_real_mouse_wheel:
+            print("real")
+            return False
+
+        # --- Detect pinch zoom (libinput & macOS) ---
+        # Conditions:
+        # 1. No Ctrl pressed (that is mouse zoom)
+        # 2. pixelDelta.x and pixelDelta.y both present (pinch has diagonal motion)
+        # 3. pixelDelta.y is small but non-zero (typical pinch: 3–30)
+        # 4. angleDelta tiny (touchpads do not send 120-step angles)
+        is_pinch_zoom = (
+            not (event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+            and not pixel.isNull()
+            # and abs(pixel.y()) <= 40       # pinch produces small deltas
+            and abs(pixel.y()) >= 1        # ignore noise
+            and abs(pixel.x()) >= 1        # pinch always has x + y movement
+            and abs(angle.y()) < 40        # rules out normal scroll
+        )
+
+        if is_pinch_zoom:
+            print("Pinch")
+            dy = pixel.y() / 60.0          # pinch is more sensitive → stronger scale
+            zoom = 1 + dy * 0.15
+
+            if zoom > 0:
+                old = self.mapToScene(event.position().toPoint())
+                self.scale(zoom, zoom)
+                new = self.mapToScene(event.position().toPoint())
+                delta = new - old
+                self.translate(delta.x(), delta.y())
+
+            event.accept()
+            return True
+
+        # --- Ctrl+wheel zoom ---
+        is_ctrl_zoom = (
+            event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            or abs(pixel.y()) > 40          # large pixelDelta = scroll gesture
+        )
+
+        if is_ctrl_zoom:
+            print("ctrl")
+            dy = pixel.y() / 120.0
+            zoom = 1 + dy * 0.1
+            if zoom > 0:
+                old = self.mapToScene(event.position().toPoint())
+                self.scale(zoom, zoom)
+                new = self.mapToScene(event.position().toPoint())
+                delta = new - old
+                self.translate(delta.x(), delta.y())
+            event.accept()
+            return True
+
+        # --- Touchpad panning ---
+        print("pan")
+        dx = pixel.x()
+        dy = pixel.y()
+
+        self._pan_accum_x += dx
+        self._pan_accum_y += dy
+
+        sx = int(self._pan_accum_x)
+        sy = int(self._pan_accum_y)
+
+        self._pan_accum_x -= sx
+        self._pan_accum_y -= sy
+
+
+        if sx != 0 or sy != 0:
+            self.horizontalScrollBar().setValue(
+                self.horizontalScrollBar().value() - (sx * SCROLL_SCALE)
+            )
+            self.verticalScrollBar().setValue(
+                self.verticalScrollBar().value() - (sy * SCROLL_SCALE)
+            )
+
+        event.accept()
+        return True
+
+
 
     # ---------- Drag Selection Helpers ----------
     def _activate_drag_select(self):
