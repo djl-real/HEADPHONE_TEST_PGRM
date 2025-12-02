@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
     QGraphicsItem, QGraphicsRectItem, QPinchGesture, QFileDialog, QMessageBox, QWidget, QVBoxLayout
 )
 from PyQt6.QtGui import (
-    QBrush, QColor, QWheelEvent, QPainter, QPen, QAction
+    QBrush, QColor, QWheelEvent, QPainter, QPen, QAction, QNativeGestureEvent, QCursor
 )
 from PyQt6.QtCore import (
     Qt, QPointF, QRectF, QEvent, QTimer
@@ -102,6 +102,8 @@ class WorkspaceView(QGraphicsView):
         self.grabGesture(Qt.GestureType.PinchGesture)
         self.setInteractive(True)
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+
+        self._native_gesture_active = False
 
         # Touch scrolling state
         self.touch_last_pos: QPointF | None = None
@@ -314,6 +316,78 @@ class WorkspaceView(QGraphicsView):
         return super().event(event)
     
     # ---------- Touchpad ----------
+
+    def event(self, event):
+        # --- Handle Native Gestures (Wayland/Linux + Windows Precision Touchpad + macOS) ---
+        print("event")
+        if isinstance(event, QNativeGestureEvent):
+            g = event.gestureType()
+
+            if g == Qt.NativeGestureType.Zoom:
+                self._handle_native_pinch_zoom(event)
+                return True
+
+            elif g == Qt.NativeGestureType.Pan:
+                self._handle_native_pinch_pan(event)
+                return True
+
+            elif g == Qt.NativeGestureType.BeginNativeGesture:
+                self._native_gesture_active = True
+                return True
+
+            elif g == Qt.NativeGestureType.EndNativeGesture:
+                self._native_gesture_active = False
+                return True
+
+        # --- Existing QPinchGesture path (fallback for macOS apps / X11) ---
+        if event.type() == QEvent.Type.Gesture:
+            return self.gestureEvent(event)
+
+        return super().event(event)
+
+
+    def _handle_native_pinch_zoom(self, e: QNativeGestureEvent):
+        # Typical value() range: ±0.01 → ±0.25
+        print("_handle_native_pinch_zoom")
+        delta = e.value()
+
+        # Convert delta to a stable zoom-factor
+        # ln-based scaling prevents exploding values
+        zoom = 1.0 + delta
+
+        if zoom <= 0:
+            return
+
+        # Use cursor position as anchor point
+        global_pos = QCursor.pos()
+        view_pos = self.mapFromGlobal(global_pos)
+        old_scene_pos = self.mapToScene(view_pos)
+
+        self.scale(zoom, zoom)
+
+        # Keep zoom centered on cursor
+        new_scene_pos = self.mapToScene(view_pos)
+        delta_scene = new_scene_pos - old_scene_pos
+        self.translate(delta_scene.x(), delta_scene.y())
+
+    def _handle_native_pinch_pan(self, e: QNativeGestureEvent):
+        # Pan gestures give dx/dy in e.value() depending on platform
+        # Qt delivers horizontal pans through value(), vertical pans through value()
+        # We read X/Y separately:
+        print("_handle_native_pinch_pan")
+
+        dx = e.delta().x()
+        dy = e.delta().y()
+
+        # KDE/Wayland sometimes gives reversed Y for compatibility
+        SCROLL = 1.0
+        self.horizontalScrollBar().setValue(
+            self.horizontalScrollBar().value() - int(dx * SCROLL)
+        )
+        self.verticalScrollBar().setValue(
+            self.verticalScrollBar().value() - int(dy * SCROLL)
+        )
+
     def _handle_touchpad_wheel(self, event: QWheelEvent) -> bool:
         SCROLL_SCALE = 2
 
