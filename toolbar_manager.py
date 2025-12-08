@@ -23,6 +23,7 @@ from modules.multiply import Multiply
 from modules.convolve import Convolve
 from modules.slowdown import Slowdown
 from modules.formant import Formant
+from modules.vocoder import Vocoder
 
 
 class ToolbarManager:
@@ -78,7 +79,8 @@ class ToolbarManager:
                 ("SampleHoldMod", SampleHoldMod),
                 ("Multiply", Multiply),
                 ("Convolve", Convolve),
-                ("Formant", Formant)
+                ("Formant", Formant),
+                ("Vocoder", Vocoder)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
