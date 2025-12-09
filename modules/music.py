@@ -1,10 +1,10 @@
-# modules/music.py
 import os
 import numpy as np
 import soundfile as sf
 import librosa
 import threading
 import traceback
+import time
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel,
     QSlider, QStackedWidget
@@ -51,6 +51,11 @@ class Music(AudioModule):
         self.loop = False
         self.scrubbing_user = False
         self.song_bpm = None
+
+        # Tap tempo state
+        self.tap_times = []
+        self.tapped_bpm = None
+        self.tap_reset_timer = None
 
         # Data
         self.songs = []               # Will hold np.ndarray or None (lazy)
@@ -152,7 +157,7 @@ class Music(AudioModule):
                 self.list_widget.addItem(display_text)
         
     def start_bpm_thread(self, path):
-        self.song_bpm = None  # mark as “not ready”
+        self.song_bpm = None  # mark as "not ready"
 
         def worker():
             try:
@@ -191,6 +196,44 @@ class Music(AudioModule):
 
         return data
 
+    # --- Tap Tempo ---
+    def on_tap(self):
+        """Handle tap button press for manual BPM detection."""
+        current_time = time.time()
+        
+        # Cancel any existing reset timer
+        if self.tap_reset_timer is not None:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
+        
+        # Add current tap time
+        self.tap_times.append(current_time)
+        
+        # Keep only recent taps (within 2 seconds of most recent)
+        self.tap_times = [t for t in self.tap_times if current_time - t < 2.0]
+        
+        # Calculate BPM if we have at least 2 taps
+        if len(self.tap_times) >= 2:
+            intervals = [self.tap_times[i] - self.tap_times[i-1] 
+                        for i in range(1, len(self.tap_times))]
+            avg_interval = sum(intervals) / len(intervals)
+            self.tapped_bpm = 60.0 / avg_interval
+        
+        # Set up auto-reset timer (2 seconds)
+        self.tap_reset_timer = QTimer()
+        self.tap_reset_timer.setSingleShot(True)
+        self.tap_reset_timer.timeout.connect(self.reset_tap_tempo)
+        self.tap_reset_timer.start(2000)
+    
+    def reset_tap_tempo(self):
+        """Reset tap tempo data after timeout."""
+        self.tap_times.clear()
+        self.tapped_bpm = None
+        if self.tap_reset_timer is not None:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
 
     # --- Playback ---
     def toggle_play(self, index: int):
@@ -444,7 +487,8 @@ class Music(AudioModule):
 
 
         # Pitch slider
-        layout.addWidget(QLabel("Pitch"))
+        self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
+        layout.addWidget(self.pitch_label)
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
         pitch_slider.setMaximum(100)
@@ -461,7 +505,12 @@ class Music(AudioModule):
         pitch_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
         pitch_slider.setTickInterval(25)
         layout.addWidget(pitch_slider)
-        pitch_slider.valueChanged.connect(lambda val: setattr(self, "pitch", slider_to_pitch(val)))
+        
+        def on_pitch_change(val):
+            self.pitch = slider_to_pitch(val)
+            self.pitch_label.setText(f"Pitch: {self.pitch:.2f}x")
+        
+        pitch_slider.valueChanged.connect(on_pitch_change)
 
         tick_layout = QHBoxLayout()
         for lbl in ["0.5", "", "", "", "1.0", "", "", "", "2.0"]:
@@ -470,9 +519,35 @@ class Music(AudioModule):
             tick_layout.addWidget(l)
         layout.addLayout(tick_layout)
 
-        # Scrub slider + label
+        # Scrub slider + label with TAP button
+        bpm_layout = QHBoxLayout()
         self.scrub_label = QLabel("Remaining: 00:00  |  BPM: ---")
-        layout.addWidget(self.scrub_label)
+        bpm_layout.addWidget(self.scrub_label)
+        
+        # TAP button
+        self.tap_btn = QPushButton("TAP")
+        self.tap_btn.setFixedSize(60, 30)
+        self.tap_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                border-radius: 4px;
+                border: 2px solid #6c3483;
+            }
+            QPushButton:hover {
+                background-color: #af7ac5;
+            }
+            QPushButton:pressed {
+                background-color: #7d3c98;
+            }
+        """)
+        self.tap_btn.clicked.connect(self.on_tap)
+        bpm_layout.addWidget(self.tap_btn)
+        
+        layout.addLayout(bpm_layout)
+        
         self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
         self.scrub_slider.setMinimum(0)
         self.scrub_slider.setMaximum(1000)
@@ -507,14 +582,20 @@ class Music(AudioModule):
                     remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
                     mins, secs = divmod(int(remaining_seconds), 60)
 
-                    # Protect against None while BPM thread runs
+                    # Build BPM display with both auto-detected and tapped
                     if self.song_bpm is None:
-                        bpm_text = "---"
+                        auto_bpm_text = "---"
                     else:
-                        bpm_text = f"{self.song_bpm * self.pitch:06.2f}"
+                        auto_bpm_text = f"{self.song_bpm * self.pitch:06.2f}"
+                    
+                    if self.tapped_bpm is not None:
+                        tap_bpm_text = f"{self.tapped_bpm:06.2f}"
+                        bpm_display = f"Auto: {auto_bpm_text} | Tap: {tap_bpm_text}"
+                    else:
+                        bpm_display = f"BPM: {auto_bpm_text}"
 
                     self.scrub_label.setText(
-                        f"Remaining: {mins:02d}:{secs:02d}  |  BPM: {bpm_text}"
+                        f"Remaining: {mins:02d}:{secs:02d}  |  {bpm_display}"
                     )
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
@@ -540,3 +621,8 @@ class Music(AudioModule):
             self.update_timer.stop()
             self.update_timer.deleteLater()
             self.update_timer = None
+        
+        if hasattr(self, "tap_reset_timer") and self.tap_reset_timer is not None:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
