@@ -24,6 +24,7 @@ from modules.convolve import Convolve
 from modules.slowdown import Slowdown
 from modules.formant import Formant
 from modules.vocoder import Vocoder
+from modules.microphone import Microphone
 
 
 class ToolbarManager:
@@ -65,7 +66,8 @@ class ToolbarManager:
                 ("Wave", Wave),
                 ("Static", Static),
                 ("Soundboard", Soundboard),
-                ("TTS", TTS)
+                ("TTS", TTS),
+                ("Microphone", Microphone)
             ],
             "Effects": [
                 ("Pan", Pan),
