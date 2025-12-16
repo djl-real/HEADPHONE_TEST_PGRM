@@ -128,7 +128,6 @@ class WorkspaceView(QGraphicsView):
         # --- First try touchpad handling ---
         if self._handle_touchpad_wheel(event):
             return
-        print("fallback")
         # --- Fallback: mouse wheel zoom ---
         # zoom = self.zoom_factor if event.angleDelta().y() > 0 else 1 / self.zoom_factor
         # old_pos = self.mapToScene(event.position().toPoint())
@@ -319,7 +318,6 @@ class WorkspaceView(QGraphicsView):
 
     def event(self, event):
         # --- Handle Native Gestures (Wayland/Linux + Windows Precision Touchpad + macOS) ---
-        print("event")
         if isinstance(event, QNativeGestureEvent):
             g = event.gestureType()
 
@@ -348,7 +346,6 @@ class WorkspaceView(QGraphicsView):
 
     def _handle_native_pinch_zoom(self, e: QNativeGestureEvent):
         # Typical value() range: ±0.01 → ±0.25
-        print("_handle_native_pinch_zoom")
         delta = e.value()
 
         # Convert delta to a stable zoom-factor
@@ -374,7 +371,6 @@ class WorkspaceView(QGraphicsView):
         # Pan gestures give dx/dy in e.value() depending on platform
         # Qt delivers horizontal pans through value(), vertical pans through value()
         # We read X/Y separately:
-        print("_handle_native_pinch_pan")
 
         dx = e.delta().x()
         dy = e.delta().y()
@@ -394,14 +390,12 @@ class WorkspaceView(QGraphicsView):
         pixel = event.pixelDelta()
         angle = event.angleDelta()
 
-        print(pixel)
 
         # --- Reliable detection of real mouse wheel ---
         is_real_mouse_wheel = (
             abs(angle.y()) >= 120 and pixel.isNull()
         )
         if is_real_mouse_wheel:
-            print("real")
             return False
 
         # --- Detect pinch zoom (libinput & macOS) ---
@@ -420,7 +414,6 @@ class WorkspaceView(QGraphicsView):
         )
 
         if is_pinch_zoom:
-            print("Pinch")
             dy = pixel.y() / 60.0          # pinch is more sensitive → stronger scale
             zoom = 1 + dy * 0.15
 
@@ -441,7 +434,6 @@ class WorkspaceView(QGraphicsView):
         )
 
         if is_ctrl_zoom:
-            print("ctrl")
             dy = pixel.y() / 120.0
             zoom = 1 + dy * 0.1
             if zoom > 0:
@@ -454,7 +446,6 @@ class WorkspaceView(QGraphicsView):
             return True
 
         # --- Touchpad panning ---
-        print("pan")
         dx = pixel.x()
         dy = pixel.y()
 
