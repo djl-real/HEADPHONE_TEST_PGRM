@@ -25,6 +25,9 @@ from modules.slowdown import Slowdown
 from modules.formant import Formant
 from modules.vocoder import Vocoder
 from modules.microphone import Microphone
+from modules.const import Const
+
+from modules.pantest import PanTest
 
 
 class ToolbarManager:
@@ -89,6 +92,10 @@ class ToolbarManager:
                 ("Crossfade", Crossfade),
                 ("Sum", Sum),
                 ("Split", Split)
+            ],
+            "Other": [
+                ("Const", Const),
+                ("PanTest", PanTest)
             ],
         }
 

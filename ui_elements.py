@@ -115,19 +115,35 @@ class NodeCircle(QGraphicsEllipseItem):
         super().__init__(-self.RADIUS, -self.RADIUS, 2 * self.RADIUS, 2 * self.RADIUS, parent_item)
         self.node_type = node_type
         self.node_obj = node_obj
-        self.index = index  # ✅ Unique index for saving/loading
+        self.index = index
         self.connection: ConnectionPath | None = None
 
         # Unique ID for layout serialization
-        self.node_id = f"{id(self)}"  # ✅ transient unique identifier
+        self.node_id = f"{id(self)}"
 
         # UI parent and backend references
         self.module_item = parent_item
         self.audio_module = getattr(parent_item, "module", None)
 
-        # Node color by type
-        color = QColor(150, 80, 200) if node_type == "output" else QColor(80, 150, 200)
+        # Get color from node_obj if available, otherwise use default
+        if node_obj and hasattr(node_obj, 'color') and node_obj.color:
+            try:
+                color = QColor(node_obj.color)
+            except:
+                color = QColor(150, 80, 200) if node_type == "output" else QColor(80, 150, 200)
+        else:
+            color = QColor(150, 80, 200) if node_type == "output" else QColor(80, 150, 200)
+        
+        self.default_color = color
         self.setBrush(QBrush(color))
+
+        # Add label if available
+        self.label = None
+        if node_obj and hasattr(node_obj, 'label') and node_obj.label:
+            self.label = QGraphicsSimpleTextItem(node_obj.label, parent_item)
+            self.label.setBrush(QBrush(QColor(200, 200, 200)))
+            self.label.setFont(QFont("Arial", 8))
+            self.label.setZValue(3)
 
         # Enable mouse interaction
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
@@ -139,6 +155,34 @@ class NodeCircle(QGraphicsEllipseItem):
         # Temporary connection during drag
         self.temp_connection: ConnectionPath | None = None
 
+    def update_label_position(self):
+        """Update the label position based on node type and custom position."""
+        if not self.label:
+            return
+        
+        label_width = self.label.boundingRect().width()
+        label_height = self.label.boundingRect().height()
+        
+        # Get custom position from node_obj if available
+        custom_position = None
+        if self.node_obj and hasattr(self.node_obj, 'position'):
+            custom_position = self.node_obj.position
+        
+        # Position label based on custom position or defaults
+        if custom_position == "top":
+            self.label.setPos(-label_width / 2, -self.RADIUS - label_height - 2)
+        elif custom_position == "bottom":
+            self.label.setPos(-label_width / 2, self.RADIUS + 2)
+        elif custom_position == "left":
+            self.label.setPos(-label_width - self.RADIUS - 5, -label_height / 2)
+        elif custom_position == "right":
+            self.label.setPos(self.RADIUS + 5, -label_height / 2)
+        else:
+            # Default positioning based on node type
+            if self.node_type == "input":
+                self.label.setPos(-label_width - self.RADIUS - 5, -label_height / 2)
+            else:  # output
+                self.label.setPos(self.RADIUS + 5, -label_height / 2)
 
     def connect(self, dst: "NodeCircle"):
         """
@@ -287,8 +331,7 @@ class NodeCircle(QGraphicsEllipseItem):
 
     def hoverLeaveEvent(self, event):
         try:
-            color = QColor(150, 80, 200) if self.node_type == "output" else QColor(80, 150, 200)
-            self.setBrush(QBrush(color))
+            self.setBrush(QBrush(self.default_color))
         except Exception:
             pass
         super().hoverLeaveEvent(event)
@@ -353,7 +396,7 @@ class ModuleItem(QGraphicsRectItem):
     def __init__(self, module: AudioModule, main_window):
         super().__init__(0, 0, self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         self.module = module
-        self.module_id = f"{id(module)}"  # 🔧 unique ID for save/load mapping
+        self.module_id = f"{id(module)}"
         self.main_window = main_window
 
         self.setBrush(QBrush(QColor(40, 40, 40)))
@@ -372,13 +415,13 @@ class ModuleItem(QGraphicsRectItem):
         # Node circles
         self.input_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "input_nodes", [])):
-            nc = NodeCircle(self, "input", node_obj=node, index=idx)  # 🔧 index passed in
+            nc = NodeCircle(self, "input", node_obj=node, index=idx)
             nc.setZValue(2)
             self.input_nodes.append(nc)
 
         self.output_nodes: list[NodeCircle] = []
         for idx, node in enumerate(getattr(module, "output_nodes", [])):
-            nc = NodeCircle(self, "output", node_obj=node, index=idx)  # 🔧 index passed in
+            nc = NodeCircle(self, "output", node_obj=node, index=idx)
             nc.setZValue(2)
             self.output_nodes.append(nc)
 
@@ -424,28 +467,78 @@ class ModuleItem(QGraphicsRectItem):
             height = max(height, proxy_rect.height() + label_height + 20)
             self._proxy_widget = proxy
 
-        # if self.width_override:
-        #     width = max(width, self.width_override)
-        # if self.height_override:
-        #     height = max(height, self.height_override)
-
         self.setRect(0, 0, width, height)
 
-        # Position input nodes
-        if self.input_nodes:
-            spacing = self.NODE_SPACING
-            start_y = (height - spacing * (len(self.input_nodes) - 1)) / 2
-            for idx, node in enumerate(self.input_nodes):
-                node.setPos(0, start_y + idx * spacing)
-
-        # Position output nodes
-        if self.output_nodes:
-            spacing = self.NODE_SPACING
-            start_y = (height - spacing * (len(self.output_nodes) - 1)) / 2
-            for idx, node in enumerate(self.output_nodes):
-                node.setPos(width, start_y + idx * spacing)
+        # Position nodes based on their custom position attribute or defaults
+        self._position_nodes(width, height)
 
         self.close_button.setPos(width - 20, 2)
+
+    def _position_nodes(self, width, height):
+        """Position input and output nodes based on custom positions or defaults."""
+        # Group nodes by position
+        input_by_position = {"left": [], "right": [], "top": [], "bottom": [], None: []}
+        output_by_position = {"left": [], "right": [], "top": [], "bottom": [], None: []}
+        
+        for node in self.input_nodes:
+            pos = node.node_obj.position if node.node_obj and hasattr(node.node_obj, 'position') else None
+            input_by_position[pos].append(node)
+        
+        for node in self.output_nodes:
+            pos = node.node_obj.position if node.node_obj and hasattr(node.node_obj, 'position') else None
+            output_by_position[pos].append(node)
+        
+        # Position left side (inputs default here if no position specified)
+        left_nodes = input_by_position["left"] + input_by_position[None]
+        if left_nodes:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(left_nodes) - 1)) / 2
+            for idx, node in enumerate(left_nodes):
+                node.setPos(0, start_y + idx * spacing)
+                node.update_label_position()
+        
+        # Position right side (outputs default here if no position specified)
+        right_nodes = output_by_position["right"] + output_by_position[None]
+        if right_nodes:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(right_nodes) - 1)) / 2
+            for idx, node in enumerate(right_nodes):
+                node.setPos(width, start_y + idx * spacing)
+                node.update_label_position()
+        
+        # Position top side
+        top_nodes = input_by_position["top"] + output_by_position["top"]
+        if top_nodes:
+            spacing = self.NODE_SPACING
+            start_x = (width - spacing * (len(top_nodes) - 1)) / 2
+            for idx, node in enumerate(top_nodes):
+                node.setPos(start_x + idx * spacing, 0)
+                node.update_label_position()
+        
+        # Position bottom side
+        bottom_nodes = input_by_position["bottom"] + output_by_position["bottom"]
+        if bottom_nodes:
+            spacing = self.NODE_SPACING
+            start_x = (width - spacing * (len(bottom_nodes) - 1)) / 2
+            for idx, node in enumerate(bottom_nodes):
+                node.setPos(start_x + idx * spacing, height)
+                node.update_label_position()
+        
+        # Position explicitly right-positioned inputs
+        if input_by_position["right"]:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(input_by_position["right"]) - 1)) / 2
+            for idx, node in enumerate(input_by_position["right"]):
+                node.setPos(width, start_y + idx * spacing)
+                node.update_label_position()
+        
+        # Position explicitly left-positioned outputs
+        if output_by_position["left"]:
+            spacing = self.NODE_SPACING
+            start_y = (height - spacing * (len(output_by_position["left"]) - 1)) / 2
+            for idx, node in enumerate(output_by_position["left"]):
+                node.setPos(0, start_y + idx * spacing)
+                node.update_label_position()
 
     def cleanup(self):
         """

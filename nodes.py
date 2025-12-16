@@ -8,7 +8,8 @@ if TYPE_CHECKING:
 class Node:
     """Unified node class that can send and receive data."""
     
-    def __init__(self, module: 'AudioModule', is_input: bool = True, data_type: str = "audio"):
+    def __init__(self, module: 'AudioModule', is_input: bool = True, data_type: str = "audio",
+                 color: str = None, position: str = None, label: str = "Audio"):
         """
         Initialize a node.
         
@@ -17,10 +18,16 @@ class Node:
             is_input: True if this is an input node, False if output
             data_type: Type of data this node handles ("audio", "control", "midi", etc.)
                       Defaults to "audio" for backward compatibility
+            color: Hex color code for visual representation (e.g., "#FF5733")
+            position: Position on module ("left", "right", "top", "bottom")
+            label: Display label for the node (defaults to "Audio")
         """
         self.module = module
         self.is_input = is_input
         self.data_type = data_type
+        self.color = color
+        self.position = position
+        self.label = label
         self.connection: Optional['Node'] = None
         self.block_touch = True
 
@@ -95,11 +102,15 @@ class Node:
 # Backward compatibility aliases
 class InputNode(Node):
     """Input node - receives data from output nodes."""
-    def __init__(self, module: 'AudioModule', data_type: str = "audio"):
-        super().__init__(module, is_input=True, data_type=data_type)
+    def __init__(self, module: 'AudioModule', data_type: str = "audio", 
+                 color: str = None, position: str = None):
+        super().__init__(module, is_input=True, data_type=data_type, 
+                        color=color, position=position)
 
 
 class OutputNode(Node):
     """Output node - sends data to input nodes."""
-    def __init__(self, module: 'AudioModule', data_type: str = "audio"):
-        super().__init__(module, is_input=False, data_type=data_type)
+    def __init__(self, module: 'AudioModule', data_type: str = "audio",
+                 color: str = None, position: str = None):
+        super().__init__(module, is_input=False, data_type=data_type,
+                        color=color, position=position)
