@@ -14,6 +14,9 @@ from PyQt6.QtGui import QFontDatabase, QFont
 from audio_module import AudioModule
 import mutagen
 
+# Import the visualizer
+from modules.cue_waveform_visualizer import CueWaveformVisualizer
+
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
 def detect_bpm(path):
@@ -35,10 +38,21 @@ def detect_bpm(path):
         return None
 
 class Music(AudioModule):
-    """Music player module with playlist, scrubbing, reverse, and pitch control."""
+    """Music player module with playlist, scrubbing, reverse, pitch control, and cue system."""
 
     def __init__(self, sample_rate=44100):
-        super().__init__(input_count=0, output_count=1)
+        super().__init__(
+            input_count=1,
+            output_count=2,
+            input_types=["cue"],
+            output_types=["audio", "cue"],
+            input_colors=["#B8860B"],  # Dark yellow
+            output_colors=[None, "#FFFF00"],  # Default for audio, bright yellow for cue
+            input_positions=["left"],
+            output_positions=[None, "right"],  # Default (right) for audio, right for cue
+            input_labels=["Cue In"],
+            output_labels=["Audio", "Cue Out"]
+        )
         self.sample_rate = sample_rate
 
         # Playback state
@@ -51,6 +65,11 @@ class Music(AudioModule):
         self.loop = False
         self.scrubbing_user = False
         self.song_bpm = None
+
+        # Cue system
+        self.cue_time = -5.0  # Seconds before end to send cue (negative value)
+        self.cue_sent = False  # Track if we've sent the cue for this playback
+        self.current_cue_out = None  # Store current cue output data
 
         # Tap tempo state
         self.tap_times = []
@@ -236,7 +255,10 @@ class Music(AudioModule):
             self.tap_reset_timer = None
 
     # --- Playback ---
-    def toggle_play(self, index: int):
+    def toggle_play(self, index: int = None):
+        if index is None:
+            index = self.current_index if self.current_index is not None else -1
+        
         if index < 0 or index >= len(self.songs):
             return
 
@@ -247,16 +269,45 @@ class Music(AudioModule):
             self.play_buffer = self.load_audio_file(index)
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
+            self.cue_sent = False  # Reset cue flag for new song
 
     def generate(self, frames: int) -> np.ndarray:
-        out = np.zeros((frames, 2), dtype=np.float32)
+        # Check which type of node is requesting data
+        # This is a workaround - we'll generate everything and store cue separately
+        
+        # Cue output - always initialize
+        cue_out = np.zeros((frames, 1), dtype=np.float32)
+        
+        # Audio output
+        audio_out = np.zeros((frames, 2), dtype=np.float32)
+        
+        # Check for incoming cue (Cue In)
+        if not self.playing and self.input_nodes and len(self.input_nodes) > 0:
+            try:
+                cue_in = self.input_nodes[0].receive(frames)
+                if isinstance(cue_in, np.ndarray) and cue_in.size > 0:
+                    # Check if any 1s in the cue signal
+                    if np.any(cue_in >= 0.5):  # Using 0.5 threshold for robustness
+                        # Find the first index where cue triggers
+                        trigger_idx = np.where(cue_in >= 0.5)[0][0]
+                        # Start playing from the selected song
+                        if self.current_index is not None:
+                            self.toggle_play(self.current_index)
+                        elif self.list_widget and self.list_widget.currentRow() >= 0:
+                            self.toggle_play(self.list_widget.currentRow())
+            except Exception as e:
+                pass  # Ignore cue input errors
+        
+        # If not playing, store cue and return silence
         if self.current_index is None or not self.playing:
-            return out
+            self.current_cue_out = cue_out
+            return audio_out
 
         track = self.play_buffer
         n_samples = len(track)
         if n_samples < 2:
-            return out
+            self.current_cue_out = cue_out
+            return audio_out
 
         # Compute all fractional indices for this block
         step = self.pitch * (-1 if self.reverse else 1)
@@ -269,8 +320,24 @@ class Music(AudioModule):
         # Vectorized linear interpolation
         idx_floor = np.floor(indices_clamped).astype(int)
         frac = indices_clamped - idx_floor
-        out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
+        audio_out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
                         frac[valid_mask, None] * track[idx_floor[valid_mask] + 1]
+
+        # --- Cue Out Logic ---
+        # Calculate remaining time in seconds at each sample
+        remaining_samples = n_samples - indices
+        remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
+        
+        # Check if we cross the cue point in this block
+        if not self.cue_sent and self.cue_time < 0:
+            cue_threshold = -self.cue_time  # Convert to positive
+            # Find where remaining time crosses the threshold
+            crossed = (remaining_seconds[:-1] > cue_threshold) & (remaining_seconds[1:] <= cue_threshold)
+            if np.any(crossed):
+                # Set cue signal at the crossing point
+                cue_idx = np.where(crossed)[0][0] + 1
+                cue_out[cue_idx, 0] = 1.0
+                self.cue_sent = True
 
         # Update playhead for next block
         self.playhead += step * frames
@@ -282,11 +349,14 @@ class Music(AudioModule):
                 self.playhead = max(0, min(self.playhead, n_samples - 1))
             else:
                 self.playhead = 0.0
+                self.cue_sent = False  # Reset cue when looping
 
-        return out
+        # Store current cue output
+        self.current_cue_out = cue_out
+        
+        return audio_out
 
-
-    # --- UI ---
+    # --- Helpers ---
 
     def make_circle_button(self, icon_char, diameter=48, bg="#444", fg="white"):
         btn = QPushButton(icon_char)
@@ -452,7 +522,7 @@ class Music(AudioModule):
                 background-color: #666;
             }
         """)
-        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))  # Go back to playlist selection screen
+        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
         layout.addWidget(back_btn)
 
         # Playlist QListWidget
@@ -485,6 +555,37 @@ class Music(AudioModule):
         # Initialize icons
         self.update_control_icons()
 
+        # Cue waveform visualizer
+        self.cue_visualizer = CueWaveformVisualizer()
+        layout.addWidget(self.cue_visualizer)
+
+        # Cue slider
+        self.cue_label = QLabel(f"Cue: {self.cue_time:.2f}s")
+        layout.addWidget(self.cue_label)
+        
+        cue_slider = QSlider(Qt.Orientation.Horizontal)
+        cue_slider.setMinimum(-2000)  # -20.00 seconds
+        cue_slider.setMaximum(0)      # 0 seconds
+        cue_slider.setValue(int(self.cue_time * 100))
+        cue_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        cue_slider.setTickInterval(500)  # Every 5 seconds
+        layout.addWidget(cue_slider)
+        
+        def on_cue_change(val):
+            self.cue_time = val / 100.0
+            self.cue_label.setText(f"Cue: {self.cue_time:.2f}s")
+            self.cue_sent = False  # Reset cue when slider changes
+            self.update_cue_visualizer()
+        
+        cue_slider.valueChanged.connect(on_cue_change)
+        
+        # Cue tick labels
+        cue_tick_layout = QHBoxLayout()
+        for lbl in ["-20s", "-15s", "-10s", "-5s", "0s"]:
+            l = QLabel(lbl)
+            l.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            cue_tick_layout.addWidget(l)
+        layout.addLayout(cue_tick_layout)
 
         # Pitch slider
         self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
@@ -597,6 +698,9 @@ class Music(AudioModule):
                     self.scrub_label.setText(
                         f"Remaining: {mins:02d}:{secs:02d}  |  {bpm_display}"
                     )
+            
+            # dont Update visualizer periodically, only updates upon change
+            # self.update_cue_visualizer()
 
         self.update_timer.timeout.connect(update_scrub_and_countdown)
         self.update_timer.start()
@@ -610,6 +714,37 @@ class Music(AudioModule):
         return widget
 
     # --- Helpers ---
+    def update_cue_visualizer(self):
+        """Update the cue waveform visualizer with current and next track data."""
+        if not hasattr(self, 'cue_visualizer'):
+            return
+        
+        # Get current track data
+        current_track = None
+        if self.current_index is not None and 0 <= self.current_index < len(self.songs):
+            current_track = self.play_buffer if self.play_buffer is not None else None
+        
+        # Get next track data from connected module
+        next_track = None
+        if len(self.output_nodes) > 1:  # output_nodes[1] is the cue out
+            connected_module = self.output_nodes[1].get_connected()
+            if connected_module and isinstance(connected_module, Music):
+                # Get the next track's data
+                if connected_module.current_index is not None:
+                    if 0 <= connected_module.current_index < len(connected_module.songs):
+                        next_track = connected_module.songs[connected_module.current_index]
+                        # Load if not yet loaded
+                        if next_track is None:
+                            next_track = connected_module.load_audio_file(connected_module.current_index)
+        
+        # Update visualizer
+        self.cue_visualizer.set_tracks(
+            current_track,
+            next_track,
+            self.cue_time,
+            self.sample_rate
+        )
+    
     def update_playhead_from_scrub(self, val):
         if self.current_index is not None and 0 <= self.current_index < len(self.songs):
             track = self.songs[self.current_index]

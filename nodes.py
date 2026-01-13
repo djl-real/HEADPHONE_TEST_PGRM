@@ -37,6 +37,17 @@ class Node:
             self.connection.connection = None
             self.connection = None
 
+    def get_connected(self) -> Optional['AudioModule']:
+        """
+        Get the module of the connected node.
+        
+        Returns:
+            The AudioModule that this node is connected to, or None if not connected.
+        """
+        if self.connection is None:
+            return None
+        return self.connection.module
+
     def connect(self, other: 'Node'):
         """Connect this node to another node, disconnecting any previous connections."""
         # Validate connection types
@@ -82,7 +93,12 @@ class Node:
         if self.connection is None:
             return self._get_default_data(frames)
         
-        # Call the module's generate method
+        # Check if module has special handling for cue data
+        if self.data_type == "cue" and hasattr(self.module, 'current_cue_out'):
+            # Return the stored cue data without calling generate
+            return self.module.current_cue_out if self.module.current_cue_out is not None else self._get_default_data(frames)
+        
+        # Call the module's generate method for audio and other types
         return self.module.generate(frames)
 
     def _get_default_data(self, frames: int) -> Any:
@@ -103,14 +119,14 @@ class Node:
 class InputNode(Node):
     """Input node - receives data from output nodes."""
     def __init__(self, module: 'AudioModule', data_type: str = "audio", 
-                 color: str = None, position: str = None):
+                 color: str = None, position: str = None, label: str = "Audio"):
         super().__init__(module, is_input=True, data_type=data_type, 
-                        color=color, position=position)
+                        color=color, position=position, label=label)
 
 
 class OutputNode(Node):
     """Output node - sends data to input nodes."""
     def __init__(self, module: 'AudioModule', data_type: str = "audio",
-                 color: str = None, position: str = None):
+                 color: str = None, position: str = None, label: str = "Audio"):
         super().__init__(module, is_input=False, data_type=data_type,
-                        color=color, position=position)
+                        color=color, position=position, label=label)
