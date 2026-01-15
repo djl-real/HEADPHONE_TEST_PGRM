@@ -7,11 +7,11 @@ from modules.endpoint import Endpoint
 from modules.wave import Wave
 from modules.static import Static
 from modules.pan import Pan
-from modules.music import Music
+from modules.music.music import Music
 from modules.soundboard import Soundboard
 from modules.crossfade import Crossfade
 from modules.hold import Hold
-from modules.tts import TTS
+from modules.tts.tts import TTS
 from modules.reverb import Reverb
 from modules.bitcrusher import Bitcrusher
 from modules.sum import Sum
@@ -26,7 +26,7 @@ from modules.formant import Formant
 from modules.vocoder import Vocoder
 from modules.microphone import Microphone
 from modules.const import Const
-from modules.gtts import GoogleTTS
+from modules.tts.mimic_tts import MimicTTS
 
 from modules.pantest import PanTest
 
@@ -71,7 +71,7 @@ class ToolbarManager:
                 ("Static", Static),
                 ("Soundboard", Soundboard),
                 ("TTS", TTS),
-                ("GoogleTTS", GoogleTTS),
+                ("MimicTTS", MimicTTS),
                 ("Microphone", Microphone)
             ],
             "Effects": [

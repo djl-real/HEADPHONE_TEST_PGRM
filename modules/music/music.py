@@ -15,7 +15,7 @@ from audio_module import AudioModule
 import mutagen
 
 # Import the visualizer
-from modules.cue_waveform_visualizer import CueWaveformVisualizer
+from modules.music.cue_waveform_visualizer import CueWaveformVisualizer
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg")
 
@@ -89,7 +89,7 @@ class Music(AudioModule):
     # --- Playlist scanning ---
     def load_playlist(self, folder_name=None):
         """Scan playlist folder, load metadata only for responsiveness."""
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlists"))
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..", "playlists"))
         if folder_name:
             playlist_dir = os.path.join(base_dir, folder_name)
         else:
@@ -475,7 +475,7 @@ class Music(AudioModule):
         main_layout.addWidget(self.stack)
 
         # --- Playlist folder selection screen ---
-        playlists_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "playlists"))
+        playlists_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..", "playlists"))
         os.makedirs(playlists_dir, exist_ok=True)
         playlists = [f for f in sorted(os.listdir(playlists_dir)) if os.path.isdir(os.path.join(playlists_dir, f))]
 

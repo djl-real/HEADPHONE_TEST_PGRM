@@ -14,7 +14,7 @@ from PyQt6.QtCore import Qt
 from audio_module import AudioModule
 
 
-class GoogleTTS(AudioModule):
+class MimicTTS(AudioModule):
     """Mycroft Mimic Text-to-speech generator module with voice selection, pitch, loop, and file presets."""
 
     def __init__(self, sample_rate=44100, tts_folder="TTS"):
@@ -105,7 +105,7 @@ class GoogleTTS(AudioModule):
             # Build mimic command
             # mimic -t "text" -voice <voice> -o output.wav
             cmd = [
-                "../mimic1/mimic",
+                "../../mimic1/mimic",
                 "-t", text,
                 "-voice", self.current_voice,
                 "-o", wav_path
