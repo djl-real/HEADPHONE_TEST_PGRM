@@ -9,8 +9,8 @@ class CueWaveformVisualizer(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumHeight(100)
-        self.setMaximumHeight(150)
+        self.setMinimumHeight(80)
+        self.setMaximumHeight(100)
 
         self.waveform_a = None
         self.waveform_b = None
@@ -20,20 +20,23 @@ class CueWaveformVisualizer(QWidget):
 
         self.cue_offset = 0.0
         self.sample_rate = 44100
+        self.pitch = 1.0  # Pitch affects playback speed
 
-    def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100):
+    def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100, pitch=1.0):
         self.sample_rate = sample_rate
         self.cue_offset = cue_seconds
+        self.pitch = pitch if pitch > 0 else 1.0
 
         if track_a_data is not None and len(track_a_data) > 0:
-            self.duration_a = len(track_a_data) / sample_rate
+            # Duration is affected by pitch (higher pitch = shorter duration)
+            self.duration_a = (len(track_a_data) / sample_rate) / self.pitch
             self.waveform_a = self._downsample_waveform(track_a_data, 800)
         else:
             self.waveform_a = None
             self.duration_a = 0.0
 
         if track_b_data is not None and len(track_b_data) > 0:
-            self.duration_b = len(track_b_data) / sample_rate
+            self.duration_b = (len(track_b_data) / sample_rate) / self.pitch
             self.waveform_b = self._downsample_waveform(track_b_data, 800)
         else:
             self.waveform_b = None
@@ -125,10 +128,14 @@ class CueWaveformVisualizer(QWidget):
                 amplitude=amplitude
             )
 
+        # Labels
         painter.setPen(QColor(200, 200, 200))
-        painter.drawText(10, 20, "Track A")
-        painter.drawText(10, height - 10, f"Cue: {self.cue_offset:.2f}s")
-        painter.drawText(width - 80, 20, "Track B")
+        font = painter.font()
+        font.setPointSize(9)
+        painter.setFont(font)
+        painter.drawText(6, 14, "Track A")
+        painter.drawText(6, height - 6, f"Cue: {self.cue_offset:.2f}s | Pitch: {self.pitch:.2f}x")
+        painter.drawText(width - 55, 14, "Track B")
 
     def _draw_waveform_fade(
         self,
