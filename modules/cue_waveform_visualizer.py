@@ -83,8 +83,12 @@ class CueWaveformVisualizer(QWidget):
         t_min = overlap_center - visible_duration / 2
         t_max = overlap_center + visible_duration / 2
 
+        denom = t_max - t_min
+        if denom <= 0:
+            denom = 0.001
+
         def time_to_x(t):
-            return (t - t_min) / (t_max - t_min) * width
+            return (t - t_min) / denom * width
 
         # Cue marker
         cue_x = time_to_x(0.0)
@@ -139,29 +143,35 @@ class CueWaveformVisualizer(QWidget):
         center_y,
         amplitude
     ):
-        if waveform is None or duration <= 0:
+        if waveform is None or duration <= 0 or len(waveform) == 0:
             return
 
-        times = [
-            start_time + (i / len(waveform)) * duration
-            for i in range(len(waveform))
-        ]
+        overlap_width = overlap_end - overlap_start
+        if overlap_width <= 0:
+            overlap_width = None  # disables fade logic safely
 
-        points = [
-            QPointF(time_to_x(t), center_y + v * amplitude)
-            for t, v in zip(times, waveform)
-        ]
+        n = len(waveform)
 
-        for i in range(len(points) - 1):
-            t = times[i]
+        for i in range(n - 1):
+            t = start_time + (i / n) * duration
+            v1 = waveform[i]
+            v2 = waveform[i + 1]
 
-            if overlap_start <= t <= overlap_end:
-                fade = abs((t - (overlap_start + overlap_end) / 2)) / (overlap_end - overlap_start)
+            x1 = time_to_x(t)
+            x2 = time_to_x(start_time + ((i + 1) / n) * duration)
+
+            y1 = center_y + v1 * amplitude
+            y2 = center_y + v2 * amplitude
+
+            alpha = 255
+
+            if overlap_width and overlap_start <= t <= overlap_end:
+                center = (overlap_start + overlap_end) / 2
+                fade = abs(t - center) / overlap_width
+                fade = min(max(fade, 0.0), 1.0)
                 alpha = int(255 * (0.3 + 0.7 * fade))
-            else:
-                alpha = 255
 
             color = QColor(base_color)
             color.setAlpha(alpha)
             painter.setPen(QPen(color, 2))
-            painter.drawLine(points[i], points[i + 1])
+            painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
