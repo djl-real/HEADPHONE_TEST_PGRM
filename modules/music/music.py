@@ -63,7 +63,7 @@ def extract_album_art(path):
                 return QPixmap.fromImage(image)
         
     except Exception as e:
-        print(f"[Music] Failed to extract album art: {e}")
+        pass
     
     return None
 
@@ -124,22 +124,16 @@ class Music(AudioModule):
     def select_song(self, index):
         """Select a song (without auto-playing). Called when song is dropped onto vinyl."""
         if not self.playlist_widget:
-            print("[Music] No playlist widget available")
             return
             
         if index < 0 or index >= len(self.playlist_widget.song_metadata):
-            print(f"[Music] Invalid song index: {index}")
             return
 
-        print(f"[Music] Selecting song at index {index}")
         self.selected_index = index
         metadata = self.playlist_widget.get_song_metadata(index)
         
         if not metadata:
-            print("[Music] No metadata found for song")
             return
-        
-        print(f"[Music] Loading: {metadata['title']} by {metadata['artist']}")
         
         # Update vinyl record display
         if hasattr(self, 'vinyl_widget'):
@@ -183,7 +177,6 @@ class Music(AudioModule):
         if not path:
             return None
         
-        print(f"[Music] Loading audio from: {path}")
         data, fs = sf.read(path, dtype="float32")
 
         if data.ndim == 1:
@@ -197,7 +190,6 @@ class Music(AudioModule):
 
         self.audio_cache[index] = data
         self.start_bpm_thread(path)
-        print(f"[Music] Audio loaded: {len(data)} samples")
         return data
 
     def start_bpm_thread(self, path):
@@ -206,8 +198,7 @@ class Music(AudioModule):
         def worker():
             try:
                 bpm = detect_bpm(path)
-            except Exception as e:
-                print("BPM thread error:", e)
+            except Exception:
                 bpm = 0.0
             self.song_bpm = bpm
         threading.Thread(target=worker, daemon=True).start()
@@ -215,24 +206,20 @@ class Music(AudioModule):
     def toggle_play(self):
         """Toggle playback of selected song."""
         if self.selected_index is None:
-            print("[Music] No song selected to play")
             return
 
         if self.current_index == self.selected_index and self.play_buffer is not None and len(self.play_buffer) > 0:
             # Toggle play/pause on current song
             self.playing = not self.playing
-            print(f"[Music] Toggled playback: {self.playing}")
         else:
             # Load and start playing new song
             self.current_index = self.selected_index
             self.play_buffer = self.load_audio_file(self.selected_index)
             if self.play_buffer is None or len(self.play_buffer) == 0:
-                print("[Music] Failed to load audio buffer")
                 return
             self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
             self.playing = True
             self.cue_sent = False
-            print(f"[Music] Started playback of song {self.current_index}")
 
         # Update vinyl animation
         if hasattr(self, 'vinyl_widget'):
@@ -404,6 +391,7 @@ class Music(AudioModule):
         self.vinyl_widget.on_play_clicked = self.toggle_play
         layout.addWidget(self.vinyl_widget)
 
+
         # Scrub/seek slider + remaining time (moved here, between playlist and controls)
         scrub_section = QVBoxLayout()
         scrub_section.setSpacing(1)
@@ -457,6 +445,12 @@ class Music(AudioModule):
                 border-radius: 2px;
             }
         """)
+        
+        # Scrub slider seeking functionality
+        self.scrub_slider.sliderPressed.connect(self._on_scrub_pressed)
+        self.scrub_slider.sliderReleased.connect(self._on_scrub_released)
+        self.scrub_slider.sliderMoved.connect(self._on_scrub_moved)
+        
         scrub_section.addWidget(self.scrub_slider)
         layout.addLayout(scrub_section)
 
@@ -508,15 +502,18 @@ class Music(AudioModule):
         self.playlist_widget = Playlist(self.playlists_base_dir)
         layout.addWidget(self.playlist_widget)
 
+        # Cue section container (hidden by default, shown when cue_out connected)
+        self.cue_section_widget = QWidget()
+        cue_section_layout = QVBoxLayout(self.cue_section_widget)
+        cue_section_layout.setContentsMargins(0, 0, 0, 0)
+        cue_section_layout.setSpacing(2)
+        
         # Cue visualizer
         self.cue_visualizer = CueWaveformVisualizer()
         self.cue_visualizer.setMaximumHeight(80)
-        layout.addWidget(self.cue_visualizer)
+        cue_section_layout.addWidget(self.cue_visualizer)
 
-        # Cue slider section (no label)
-        cue_section = QVBoxLayout()
-        cue_section.setSpacing(1)
-        
+        # Cue slider
         self.cue_slider = QSlider(Qt.Orientation.Horizontal)
         self.cue_slider.setMinimum(-2000)
         self.cue_slider.setMaximum(0)
@@ -539,7 +536,7 @@ class Music(AudioModule):
                 border-radius: 2px;
             }
         """)
-        cue_section.addWidget(self.cue_slider)
+        cue_section_layout.addWidget(self.cue_slider)
         
         def on_cue_change(val):
             self.cue_time = val / 100.0
@@ -550,25 +547,54 @@ class Music(AudioModule):
         
         self.cue_tick_layout = QHBoxLayout()
         self.cue_tick_layout.setSpacing(0)
-        cue_section.addLayout(self.cue_tick_layout)
+        cue_section_layout.addLayout(self.cue_tick_layout)
         self.update_cue_tick_labels(20)  # Default 20s
         
-        layout.addLayout(cue_section)
+        # Hide cue section by default
+        self.cue_section_widget.hide()
+        layout.addWidget(self.cue_section_widget)
 
-        # Pitch slider section
+        # Pitch slider section with reset button
         pitch_section = QVBoxLayout()
         pitch_section.setSpacing(1)
         
+        pitch_header = QHBoxLayout()
+        pitch_header.setSpacing(4)
+        
         self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
         self.pitch_label.setStyleSheet("color: #aaa; font-size: 10px;")
-        pitch_section.addWidget(self.pitch_label)
+        pitch_header.addWidget(self.pitch_label)
         
-        pitch_slider = QSlider(Qt.Orientation.Horizontal)
-        pitch_slider.setMinimum(0)
-        pitch_slider.setMaximum(100)
-        pitch_slider.setValue(50)
-        pitch_slider.setFixedHeight(18)
-        pitch_slider.setStyleSheet("""
+        # Pitch reset button
+        self.pitch_reset_btn = QPushButton("1x")
+        self.pitch_reset_btn.setFixedSize(24, 16)
+        self.pitch_reset_btn.setToolTip("Reset pitch to 1.00x")
+        self.pitch_reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #aaa;
+                font-size: 9px;
+                font-weight: bold;
+                border-radius: 3px;
+                border: 1px solid #555;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: white;
+                border-color: #4a90e2;
+            }
+        """)
+        pitch_header.addWidget(self.pitch_reset_btn)
+        pitch_header.addStretch()
+        
+        pitch_section.addLayout(pitch_header)
+        
+        self.pitch_slider = QSlider(Qt.Orientation.Horizontal)
+        self.pitch_slider.setMinimum(0)
+        self.pitch_slider.setMaximum(100)
+        self.pitch_slider.setValue(50)
+        self.pitch_slider.setFixedHeight(18)
+        self.pitch_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #333;
                 height: 5px;
@@ -581,7 +607,7 @@ class Music(AudioModule):
                 border-radius: 6px;
             }
         """)
-        pitch_section.addWidget(pitch_slider)
+        pitch_section.addWidget(self.pitch_slider)
         
         def on_pitch_change(val):
             s = val / 100.0
@@ -593,7 +619,11 @@ class Music(AudioModule):
             # Update cue visualizer with new pitch
             self.update_cue_visualizer()
         
-        pitch_slider.valueChanged.connect(on_pitch_change)
+        def reset_pitch():
+            self.pitch_slider.setValue(50)  # 50 corresponds to 1.0x
+        
+        self.pitch_slider.valueChanged.connect(on_pitch_change)
+        self.pitch_reset_btn.clicked.connect(reset_pitch)
         layout.addLayout(pitch_section)
 
         # Timer for UI updates
@@ -601,11 +631,25 @@ class Music(AudioModule):
         self.update_timer.setInterval(50)
         
         def update_ui():
-            if self.playing and self.current_index is not None:
+            # Check cue_out connection status and show/hide cue section
+            cue_connected = False
+            if len(self.output_nodes) > 1:
+                cue_connected = self.output_nodes[1].get_connected() is not None
+            
+            if cue_connected and not self.cue_section_widget.isVisible():
+                self.cue_section_widget.show()
+                self.update_cue_visualizer()
+            elif not cue_connected and self.cue_section_widget.isVisible():
+                self.cue_section_widget.hide()
+            
+            # Update playback UI
+            if self.playing and self.current_index is not None and not self.scrubbing_user:
                 track = self.play_buffer
                 if track is not None and len(track) > 0:
                     progress = min(max(self.playhead / len(track), 0.0), 1.0)
+                    self.scrub_slider.blockSignals(True)
                     self.scrub_slider.setValue(int(progress * 1000))
+                    self.scrub_slider.blockSignals(False)
 
                     remaining_samples = len(track) - int(self.playhead)
                     remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
@@ -622,6 +666,24 @@ class Music(AudioModule):
         self.update_timer.start()
 
         return widget
+    
+    def _on_scrub_pressed(self):
+        """Called when user starts dragging scrub slider."""
+        self.scrubbing_user = True
+    
+    def _on_scrub_released(self):
+        """Called when user releases scrub slider."""
+        self.scrubbing_user = False
+    
+    def _on_scrub_moved(self, value):
+        """Called when user moves scrub slider - seek to position."""
+        if self.current_index is not None and self.play_buffer is not None:
+            track = self.play_buffer
+            if len(track) > 0:
+                # Convert slider value (0-1000) to playhead position
+                progress = value / 1000.0
+                self.playhead = progress * len(track)
+                self.cue_sent = False  # Reset cue so it can trigger again
 
     def cleanup(self):
         if hasattr(self, "update_timer") and self.update_timer:

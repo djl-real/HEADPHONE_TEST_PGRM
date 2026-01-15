@@ -231,8 +231,7 @@ class Playlist(QWidget):
             
             if not folders:
                 self.list_widget.addItem("No playlists found")
-        except Exception as e:
-            print(f"[Playlist] Error loading folders: {e}")
+        except Exception:
             self.list_widget.addItem("Error loading playlists")
     
     def show_song_list(self, playlist_name):
@@ -240,9 +239,6 @@ class Playlist(QWidget):
         self.current_mode = "songs"
         self.current_playlist_name = playlist_name
         self.current_playlist_path = os.path.join(self.playlists_base_dir, playlist_name)
-        
-        # Update header
-        self.header_label.setText(playlist_name)
         
         # Enable dragging in songs mode
         self.list_widget.set_drag_enabled_mode(True)
@@ -252,6 +248,16 @@ class Playlist(QWidget):
         
         # Load songs
         self.load_songs()
+        
+        # Update header with total length
+        total_seconds = sum(m['length'] for m in self.song_metadata)
+        total_mins, total_secs = divmod(total_seconds, 60)
+        total_hours, total_mins = divmod(total_mins, 60)
+        if total_hours > 0:
+            length_str = f"{total_hours}:{total_mins:02d}:{total_secs:02d}"
+        else:
+            length_str = f"{total_mins}:{total_secs:02d}"
+        self.header_label.setText(f"{playlist_name} [{length_str}]")
     
     def load_songs(self):
         """Load and display songs from current playlist path."""
@@ -313,13 +319,11 @@ class Playlist(QWidget):
                     
                     self.list_widget.addItem(display_text)
                     
-                except Exception as e:
-                    print(f"[Playlist] Failed to scan {fname}: {e}")
+                except Exception:
+                    pass
         
         if not self.song_names:
             self.list_widget.addItem("No songs found")
-        else:
-            print(f"[Playlist] Loaded {len(self.song_names)} songs")
     
     def on_item_clicked(self, item):
         """Handle single click - only navigates folders."""

@@ -1,0 +1,4 @@
+failed to load current build... enabling fallback in saftey mode 
+model enabled - neocognitron
+fatal damage to fallback kernel. Enabling beta firmware layer...
+model enabled - multilayer perceptron
