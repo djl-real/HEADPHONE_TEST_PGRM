@@ -559,30 +559,37 @@ class Music(AudioModule):
         self.cue_visualizer = CueWaveformVisualizer()
         layout.addWidget(self.cue_visualizer)
 
-        # Cue slider
+        # Cue label
         self.cue_label = QLabel(f"Cue: {self.cue_time:.2f}s")
         layout.addWidget(self.cue_label)
-        
+
+        # Cue slider
         cue_slider = QSlider(Qt.Orientation.Horizontal)
-        cue_slider.setMinimum(-2000)  # -20.00 seconds
-        cue_slider.setMaximum(0)      # 0 seconds
-        cue_slider.setValue(int(self.cue_time * 100))
+
+        # Determine track length if a track is loaded, fallback to 20s
+        track_length_seconds = getattr(self, "current_track_length", 20.0)
+
+        cue_slider.setMinimum(int(-track_length_seconds * 100))  # negative full track
+        cue_slider.setMaximum(0)  # 0 = end of track
+        cue_slider.setValue(0)     # initialize at 0
         cue_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        cue_slider.setTickInterval(500)  # Every 5 seconds
+        cue_slider.setTickInterval(int(track_length_seconds * 100 / 4))  # 4 ticks
         layout.addWidget(cue_slider)
-        
+
         def on_cue_change(val):
             self.cue_time = val / 100.0
             self.cue_label.setText(f"Cue: {self.cue_time:.2f}s")
-            self.cue_sent = False  # Reset cue when slider changes
+            self.cue_sent = False
             self.update_cue_visualizer()
-        
+
         cue_slider.valueChanged.connect(on_cue_change)
-        
-        # Cue tick labels
+
+        # Dynamic tick labels
         cue_tick_layout = QHBoxLayout()
-        for lbl in ["-20s", "-15s", "-10s", "-5s", "0s"]:
-            l = QLabel(lbl)
+        num_ticks = 5
+        for i in range(num_ticks):
+            seconds = -track_length_seconds * (1 - i / (num_ticks - 1))
+            l = QLabel(f"{seconds:.0f}s")
             l.setAlignment(Qt.AlignmentFlag.AlignHCenter)
             cue_tick_layout.addWidget(l)
         layout.addLayout(cue_tick_layout)

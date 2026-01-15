@@ -1,0 +1,185 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "2645530616656",
+            "type": "Music",
+            "pos": [
+                641.0,
+                -206.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2,
+                "input_types": [
+                    "cue"
+                ],
+                "output_types": [
+                    "audio",
+                    "cue"
+                ],
+                "input_colors": [
+                    "#B8860B"
+                ],
+                "output_colors": [
+                    null,
+                    "#FFFF00"
+                ],
+                "input_positions": [
+                    "left"
+                ],
+                "output_positions": [
+                    null,
+                    "right"
+                ],
+                "input_labels": [
+                    "Cue In"
+                ],
+                "output_labels": [
+                    "Audio",
+                    "Cue Out"
+                ]
+            }
+        },
+        {
+            "id": "2645528726896",
+            "type": "Music",
+            "pos": [
+                -253.0,
+                -237.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2,
+                "input_types": [
+                    "cue"
+                ],
+                "output_types": [
+                    "audio",
+                    "cue"
+                ],
+                "input_colors": [
+                    "#B8860B"
+                ],
+                "output_colors": [
+                    null,
+                    "#FFFF00"
+                ],
+                "input_positions": [
+                    "left"
+                ],
+                "output_positions": [
+                    null,
+                    "right"
+                ],
+                "input_labels": [
+                    "Cue In"
+                ],
+                "output_labels": [
+                    "Audio",
+                    "Cue Out"
+                ]
+            }
+        },
+        {
+            "id": "2643926153408",
+            "type": "Endpoint",
+            "pos": [
+                300.0,
+                316.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [],
+                "volume_db": -3.5,
+                "muted": false,
+                "nickname": ""
+            }
+        },
+        {
+            "id": "2643927806864",
+            "type": "Endpoint",
+            "pos": [
+                1191.0,
+                293.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [],
+                "volume_db": -2.5999999999999943,
+                "muted": false,
+                "nickname": ""
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "2645528726896",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2643926153408",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2645530616656",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2643927806864",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "2645528726896",
+                "node_index": 1,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "2645530616656",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
