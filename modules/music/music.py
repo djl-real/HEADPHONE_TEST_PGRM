@@ -377,9 +377,12 @@ class Music(AudioModule):
             current_track = self.audio_cache.get(self.selected_index)
         
         next_track = None
+        pitch_b = 1.0
         if len(self.output_nodes) > 1:
             connected_module = self.output_nodes[1].get_connected()
             if connected_module and isinstance(connected_module, Music):
+                # Get pitch from connected module
+                pitch_b = connected_module.pitch
                 if connected_module.selected_index is not None:
                     if not hasattr(connected_module, 'audio_cache'):
                         connected_module.audio_cache = {}
@@ -387,7 +390,7 @@ class Music(AudioModule):
                     if next_track is None:
                         next_track = connected_module.load_audio_file(connected_module.selected_index)
         
-        self.cue_visualizer.set_tracks(current_track, next_track, self.cue_time, self.sample_rate, self.pitch)
+        self.cue_visualizer.set_tracks(current_track, next_track, self.cue_time, self.sample_rate, self.pitch, pitch_b)
 
     def get_ui(self) -> QWidget:
         widget = QWidget()
@@ -401,12 +404,69 @@ class Music(AudioModule):
         self.vinyl_widget.on_play_clicked = self.toggle_play
         layout.addWidget(self.vinyl_widget)
 
-        # Control buttons row
+        # Scrub/seek slider + remaining time (moved here, between playlist and controls)
+        scrub_section = QVBoxLayout()
+        scrub_section.setSpacing(1)
+        
+        # Remaining time + BPM row
+        bpm_layout = QHBoxLayout()
+        bpm_layout.setSpacing(4)
+        self.scrub_label = QLabel("Remaining: 00:00  |  BPM: ---")
+        self.scrub_label.setStyleSheet("color: #888; font-size: 10px;")
+        
+        self.tap_btn = QPushButton("TAP")
+        self.tap_btn.setFixedSize(40, 20)
+        self.tap_btn.setToolTip("Tap to detect BPM manually")
+        self.tap_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a4a4a;
+                color: white;
+                font-weight: bold;
+                font-size: 9px;
+                border-radius: 4px;
+                border: 1px solid #666;
+            }
+            QPushButton:hover { background-color: #5a5a5a; }
+            QPushButton:pressed { background-color: #3a3a3a; }
+        """)
+        self.tap_btn.clicked.connect(self.on_tap)
+        
+        bpm_layout.addWidget(self.scrub_label)
+        bpm_layout.addWidget(self.tap_btn)
+        scrub_section.addLayout(bpm_layout)
+        
+        # Scrub slider
+        self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scrub_slider.setMinimum(0)
+        self.scrub_slider.setMaximum(1000)
+        self.scrub_slider.setFixedHeight(14)
+        self.scrub_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #333;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #2ecc71;
+                width: 10px;
+                margin: -3px 0;
+                border-radius: 5px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #2ecc71;
+                border-radius: 2px;
+            }
+        """)
+        scrub_section.addWidget(self.scrub_slider)
+        layout.addLayout(scrub_section)
+
+        # Control buttons row (reverse + loop)
         ctrl_layout = QHBoxLayout()
         ctrl_layout.setSpacing(6)
         
-        self.reverse_btn = self.make_circle_button("<<", 32, tooltip="Reverse playback")
-        self.loop_btn = self.make_circle_button("O", 32, tooltip="Loop track")
+        # Better unicode symbols for reverse and loop
+        self.reverse_btn = self.make_circle_button("\u23EA", 28, tooltip="Reverse playback")  # ⏪
+        self.loop_btn = self.make_circle_button("\u21BB", 28, tooltip="Loop track")  # ↻
         
         # Toggle styling for buttons
         def toggle_reverse():
@@ -415,8 +475,8 @@ class Music(AudioModule):
                 QPushButton {{
                     background-color: {'#4a90e2' if self.reverse else '#444'};
                     color: white;
-                    font-size: 16px;
-                    border-radius: 16px;
+                    font-size: 14px;
+                    border-radius: 14px;
                     border: 2px solid #222;
                 }}
                 QPushButton:hover {{ background-color: {'#5aa0f2' if self.reverse else '#666'}; }}
@@ -428,8 +488,8 @@ class Music(AudioModule):
                 QPushButton {{
                     background-color: {'#4a90e2' if self.loop else '#444'};
                     color: white;
-                    font-size: 16px;
-                    border-radius: 16px;
+                    font-size: 14px;
+                    border-radius: 14px;
                     border: 2px solid #222;
                 }}
                 QPushButton:hover {{ background-color: {'#5aa0f2' if self.loop else '#666'}; }}
@@ -450,44 +510,39 @@ class Music(AudioModule):
 
         # Cue visualizer
         self.cue_visualizer = CueWaveformVisualizer()
-        self.cue_visualizer.setMaximumHeight(100)
+        self.cue_visualizer.setMaximumHeight(80)
         layout.addWidget(self.cue_visualizer)
 
-        # Cue slider section
+        # Cue slider section (no label)
         cue_section = QVBoxLayout()
         cue_section.setSpacing(1)
-        
-        self.cue_label = QLabel(f"Cue Point: {self.cue_time:.2f}s before end")
-        self.cue_label.setStyleSheet("color: #FFFF00; font-weight: bold; font-size: 11px;")
-        cue_section.addWidget(self.cue_label)
         
         self.cue_slider = QSlider(Qt.Orientation.Horizontal)
         self.cue_slider.setMinimum(-2000)
         self.cue_slider.setMaximum(0)
         self.cue_slider.setValue(int(self.cue_time * 100))
-        self.cue_slider.setFixedHeight(20)
+        self.cue_slider.setFixedHeight(18)
         self.cue_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #333;
-                height: 6px;
-                border-radius: 3px;
+                height: 5px;
+                border-radius: 2px;
             }
             QSlider::handle:horizontal {
                 background: #FFFF00;
-                width: 14px;
+                width: 12px;
                 margin: -4px 0;
-                border-radius: 7px;
+                border-radius: 6px;
             }
             QSlider::sub-page:horizontal {
                 background: #666;
-                border-radius: 3px;
+                border-radius: 2px;
             }
         """)
         cue_section.addWidget(self.cue_slider)
         
         def on_cue_change(val):
             self.cue_time = val / 100.0
-            self.cue_label.setText(f"Cue Point: {self.cue_time:.2f}s before end")
             self.cue_sent = False
             self.update_cue_visualizer()
         
@@ -505,25 +560,25 @@ class Music(AudioModule):
         pitch_section.setSpacing(1)
         
         self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
-        self.pitch_label.setStyleSheet("color: #aaa; font-size: 11px;")
+        self.pitch_label.setStyleSheet("color: #aaa; font-size: 10px;")
         pitch_section.addWidget(self.pitch_label)
         
         pitch_slider = QSlider(Qt.Orientation.Horizontal)
         pitch_slider.setMinimum(0)
         pitch_slider.setMaximum(100)
         pitch_slider.setValue(50)
-        pitch_slider.setFixedHeight(20)
+        pitch_slider.setFixedHeight(18)
         pitch_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #333;
-                height: 6px;
-                border-radius: 3px;
+                height: 5px;
+                border-radius: 2px;
             }
             QSlider::handle:horizontal {
                 background: #4a90e2;
-                width: 14px;
+                width: 12px;
                 margin: -4px 0;
-                border-radius: 7px;
+                border-radius: 6px;
             }
         """)
         pitch_section.addWidget(pitch_slider)
@@ -540,61 +595,6 @@ class Music(AudioModule):
         
         pitch_slider.valueChanged.connect(on_pitch_change)
         layout.addLayout(pitch_section)
-
-        # Scrub + BPM section
-        bpm_layout = QHBoxLayout()
-        bpm_layout.setSpacing(4)
-        self.scrub_label = QLabel("Remaining: 00:00  |  BPM: ---")
-        self.scrub_label.setStyleSheet("color: #888; font-size: 10px;")
-        
-        self.tap_btn = QPushButton("TAP")
-        self.tap_btn.setFixedSize(50, 24)
-        self.tap_btn.setToolTip("Tap to detect BPM manually")
-        self.tap_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4a4a4a;
-                color: white;
-                font-weight: bold;
-                font-size: 10px;
-                border-radius: 4px;
-                border: 1px solid #666;
-            }
-            QPushButton:hover {
-                background-color: #5a5a5a;
-            }
-            QPushButton:pressed {
-                background-color: #3a3a3a;
-            }
-        """)
-        self.tap_btn.clicked.connect(self.on_tap)
-        
-        bpm_layout.addWidget(self.scrub_label)
-        bpm_layout.addWidget(self.tap_btn)
-        layout.addLayout(bpm_layout)
-        
-        # Scrub/seek slider
-        self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
-        self.scrub_slider.setMinimum(0)
-        self.scrub_slider.setMaximum(1000)
-        self.scrub_slider.setFixedHeight(16)
-        self.scrub_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #333;
-                height: 4px;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #2ecc71;
-                width: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #2ecc71;
-                border-radius: 2px;
-            }
-        """)
-        layout.addWidget(self.scrub_slider)
 
         # Timer for UI updates
         self.update_timer = QTimer()

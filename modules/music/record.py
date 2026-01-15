@@ -193,10 +193,10 @@ class Record(QWidget):
                 groove_radius = radius * (i / 10)
                 painter.drawEllipse(QPointF(center_x, center_y), groove_radius, groove_radius)
         
-        # Draw center spindle hole
-        spindle_radius = 8
-        painter.setPen(QPen(QColor(30, 30, 30), 2))
-        painter.setBrush(QBrush(QColor(20, 20, 20)))
+        # Draw center spindle hole (very small)
+        spindle_radius = 4
+        painter.setPen(QPen(QColor(20, 20, 20), 1))
+        painter.setBrush(QBrush(QColor(15, 15, 15)))
         painter.drawEllipse(QPointF(center_x, center_y), spindle_radius, spindle_radius)
         
         # Draw play/pause button in center

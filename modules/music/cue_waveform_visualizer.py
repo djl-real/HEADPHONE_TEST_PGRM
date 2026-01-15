@@ -20,23 +20,25 @@ class CueWaveformVisualizer(QWidget):
 
         self.cue_offset = 0.0
         self.sample_rate = 44100
-        self.pitch = 1.0  # Pitch affects playback speed
+        self.pitch_a = 1.0  # Pitch for track A
+        self.pitch_b = 1.0  # Pitch for track B
 
-    def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100, pitch=1.0):
+    def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100, pitch_a=1.0, pitch_b=1.0):
         self.sample_rate = sample_rate
         self.cue_offset = cue_seconds
-        self.pitch = pitch if pitch > 0 else 1.0
+        self.pitch_a = pitch_a if pitch_a > 0 else 1.0
+        self.pitch_b = pitch_b if pitch_b > 0 else 1.0
 
         if track_a_data is not None and len(track_a_data) > 0:
             # Duration is affected by pitch (higher pitch = shorter duration)
-            self.duration_a = (len(track_a_data) / sample_rate) / self.pitch
+            self.duration_a = (len(track_a_data) / sample_rate) / self.pitch_a
             self.waveform_a = self._downsample_waveform(track_a_data, 800)
         else:
             self.waveform_a = None
             self.duration_a = 0.0
 
         if track_b_data is not None and len(track_b_data) > 0:
-            self.duration_b = (len(track_b_data) / sample_rate) / self.pitch
+            self.duration_b = (len(track_b_data) / sample_rate) / self.pitch_b
             self.waveform_b = self._downsample_waveform(track_b_data, 800)
         else:
             self.waveform_b = None
@@ -133,9 +135,9 @@ class CueWaveformVisualizer(QWidget):
         font = painter.font()
         font.setPointSize(9)
         painter.setFont(font)
-        painter.drawText(6, 14, "Track A")
-        painter.drawText(6, height - 6, f"Cue: {self.cue_offset:.2f}s | Pitch: {self.pitch:.2f}x")
-        painter.drawText(width - 55, 14, "Track B")
+        painter.drawText(6, 14, f"A: {self.pitch_a:.2f}x")
+        painter.drawText(6, height - 6, f"Cue: {self.cue_offset:.2f}s")
+        painter.drawText(width - 55, 14, f"B: {self.pitch_b:.2f}x")
 
     def _draw_waveform_fade(
         self,

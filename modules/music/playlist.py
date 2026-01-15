@@ -1,7 +1,7 @@
 import os
 import soundfile as sf
 import mutagen
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QListWidget, QPushButton, QLabel, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel, QApplication
 from PyQt6.QtCore import Qt, QMimeData, QPoint, QSize
 from PyQt6.QtGui import QDrag, QFontDatabase, QPixmap, QPainter, QColor, QFont, QBrush, QPen
 
@@ -62,9 +62,8 @@ class DraggableListWidget(QListWidget):
     
     def _create_drag_pixmap(self, title, artist):
         """Create a styled pixmap for the drag preview."""
-        # Dimensions
-        width = 180
-        height = 60
+        width = 160
+        height = 50
         
         pixmap = QPixmap(width, height)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -75,26 +74,19 @@ class DraggableListWidget(QListWidget):
         # Draw rounded rectangle background
         painter.setPen(QPen(QColor(74, 144, 226), 2))
         painter.setBrush(QBrush(QColor(40, 40, 40, 230)))
-        painter.drawRoundedRect(2, 2, width - 4, height - 4, 10, 10)
-        
-        # Draw music note icon
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QBrush(QColor(74, 144, 226)))
-        painter.drawEllipse(12, 35, 12, 12)
-        painter.drawRect(22, 15, 3, 25)
-        painter.drawRect(22, 12, 12, 6)
+        painter.drawRoundedRect(2, 2, width - 4, height - 4, 8, 8)
         
         # Draw title
         painter.setPen(QColor(255, 255, 255))
-        font = QFont("Arial", 11, QFont.Weight.Bold)
+        font = QFont("Arial", 10, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(40, 28, title)
+        painter.drawText(10, 22, title)
         
         # Draw artist
         painter.setPen(QColor(180, 180, 180))
-        font = QFont("Arial", 9)
+        font = QFont("Arial", 8)
         painter.setFont(font)
-        painter.drawText(40, 45, artist)
+        painter.drawText(10, 38, artist)
         
         painter.end()
         return pixmap
@@ -113,6 +105,7 @@ class Playlist(QWidget):
         self.current_mode = "folders"  # "folders" or "songs"
         self.current_playlist_path = None
         self.current_playlist_name = None
+        self.folder_names = []
         
         # Data storage
         self.song_names = []
@@ -128,43 +121,71 @@ class Playlist(QWidget):
         """Setup the UI layout."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setSpacing(2)
+        
+        # Header with back button and label
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(4)
+        
+        # Back button (squircle style, hidden initially)
+        self.back_button = QPushButton("<")
+        self.back_button.setFixedSize(20, 20)
+        self.back_button.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #aaa;
+                font-size: 11px;
+                font-weight: bold;
+                border-radius: 5px;
+                border: 1px solid #555;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: white;
+                border-color: #4a90e2;
+            }
+        """)
+        self.back_button.clicked.connect(self.go_back)
+        self.back_button.hide()
+        header_layout.addWidget(self.back_button)
         
         # Header label
-        self.header_label = QLabel("📁 Playlists")
+        self.header_label = QLabel("Playlists")
         self.header_label.setStyleSheet("""
             QLabel {
                 color: #4a90e2;
-                font-size: 13px;
+                font-size: 11px;
                 font-weight: bold;
-                padding: 4px 8px;
-                background-color: #1a1a1a;
-                border-radius: 4px;
+                padding: 2px 4px;
             }
         """)
-        layout.addWidget(self.header_label)
+        header_layout.addWidget(self.header_label)
+        header_layout.addStretch()
+        
+        layout.addLayout(header_layout)
         
         # List widget
         self.list_widget = DraggableListWidget()
         self.list_widget.set_playlist_ref(self)
         
-        # Styling
+        # Styling - more compact
         mono_font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        mono_font.setPointSize(11)
+        mono_font.setPointSize(9)
         self.list_widget.setFont(mono_font)
-        self.list_widget.setMinimumWidth(350)
+        self.list_widget.setMinimumWidth(280)
         self.list_widget.setStyleSheet("""
             QListWidget {
                 background-color: #2c2c2c;
                 border: 1px solid #444;
-                border-radius: 6px;
+                border-radius: 4px;
                 color: white;
                 outline: none;
             }
             QListWidget::item {
-                padding: 6px 8px;
-                border-radius: 4px;
-                margin: 2px 4px;
+                padding: 2px 4px;
+                border-radius: 2px;
+                margin: 1px 2px;
             }
             QListWidget::item:hover {
                 background-color: #3c3c3c;
@@ -179,47 +200,12 @@ class Playlist(QWidget):
         self.list_widget.itemDoubleClicked.connect(self.on_item_double_clicked)
         
         layout.addWidget(self.list_widget)
-        
-        # Hint label for drag instruction
-        self.hint_label = QLabel("")
-        self.hint_label.setStyleSheet("""
-            QLabel {
-                color: #888;
-                font-size: 10px;
-                font-style: italic;
-                padding: 2px 8px;
-            }
-        """)
-        self.hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.hint_label)
-        
-        # Back button (hidden initially)
-        self.back_button = QPushButton("← Back")
-        self.back_button.setFixedHeight(32)
-        self.back_button.setStyleSheet("""
-            QPushButton {
-                background-color: #3a3a3a;
-                color: white;
-                font-size: 12px;
-                font-weight: bold;
-                border-radius: 6px;
-                border: 1px solid #555;
-                padding: 4px 12px;
-            }
-            QPushButton:hover {
-                background-color: #4a4a4a;
-                border-color: #4a90e2;
-            }
-        """)
-        self.back_button.clicked.connect(self.go_back)
-        self.back_button.hide()
-        layout.addWidget(self.back_button)
     
     def show_folder_list(self):
         """Show list of playlist folders."""
         self.current_mode = "folders"
         self.list_widget.clear()
-        self.folder_names = []  # Store actual folder names for lookup
+        self.folder_names = []
         
         # Update header
         self.header_label.setText("Playlists")
@@ -227,9 +213,8 @@ class Playlist(QWidget):
         # Disable dragging in folder mode
         self.list_widget.set_drag_enabled_mode(False)
         
-        # Hide back button and hint
+        # Hide back button
         self.back_button.hide()
-        self.hint_label.setText("")
         
         # Get all subdirectories
         try:
@@ -242,7 +227,7 @@ class Playlist(QWidget):
                 song_count = len([f for f in os.listdir(folder_path) 
                                  if f.lower().endswith(AUDIO_EXTENSIONS)])
                 self.folder_names.append(folder)
-                self.list_widget.addItem(f"{folder} ({song_count} songs)")
+                self.list_widget.addItem(f"{folder} ({song_count})")
             
             if not folders:
                 self.list_widget.addItem("No playlists found")
@@ -262,9 +247,8 @@ class Playlist(QWidget):
         # Enable dragging in songs mode
         self.list_widget.set_drag_enabled_mode(True)
         
-        # Show back button and hint
+        # Show back button
         self.back_button.show()
-        self.hint_label.setText("Drag songs to the vinyl record to load them")
         
         # Load songs
         self.load_songs()
@@ -280,15 +264,15 @@ class Playlist(QWidget):
             self.list_widget.addItem("No songs in this playlist")
             return
         
-        MAX_TITLE_LEN = 15
-        MAX_ARTIST_LEN = 15
+        MAX_TITLE_LEN = 18
+        MAX_ARTIST_LEN = 12
         
         for fname in sorted(os.listdir(self.current_playlist_path)):
             if fname.lower().endswith(AUDIO_EXTENSIONS):
                 path = os.path.join(self.current_playlist_path, fname)
                 try:
                     title = os.path.splitext(fname)[0]
-                    artist = "Unknown Artist"
+                    artist = "Unknown"
                     length_seconds = 0
                     
                     # Extract metadata
@@ -320,11 +304,11 @@ class Playlist(QWidget):
                     })
                     self.song_names.append(fname)
                     
-                    # Create display text
-                    display_title = (title.strip()[:MAX_TITLE_LEN-1] + "…") if len(title) > MAX_TITLE_LEN else title.ljust(MAX_TITLE_LEN)
-                    display_artist = (artist.strip()[:MAX_ARTIST_LEN-1] + "…") if len(artist) > MAX_ARTIST_LEN else artist.ljust(MAX_ARTIST_LEN)
+                    # Create display text - compact
+                    display_title = (title.strip()[:MAX_TITLE_LEN-1] + "~") if len(title) > MAX_TITLE_LEN else title.ljust(MAX_TITLE_LEN)
+                    display_artist = (artist.strip()[:MAX_ARTIST_LEN-1] + "~") if len(artist) > MAX_ARTIST_LEN else artist.ljust(MAX_ARTIST_LEN)
                     mins, secs = divmod(length_seconds, 60)
-                    duration = f"{mins:02d}:{secs:02d}"
+                    duration = f"{mins}:{secs:02d}"
                     display_text = f"{display_title} {display_artist} {duration}"
                     
                     self.list_widget.addItem(display_text)
