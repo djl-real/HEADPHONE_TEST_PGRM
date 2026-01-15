@@ -26,6 +26,7 @@ from modules.formant import Formant
 from modules.vocoder import Vocoder
 from modules.microphone import Microphone
 from modules.const import Const
+from modules.gtts import GoogleTTS
 
 from modules.pantest import PanTest
 
@@ -70,6 +71,7 @@ class ToolbarManager:
                 ("Static", Static),
                 ("Soundboard", Soundboard),
                 ("TTS", TTS),
+                ("GoogleTTS", GoogleTTS),
                 ("Microphone", Microphone)
             ],
             "Effects": [
