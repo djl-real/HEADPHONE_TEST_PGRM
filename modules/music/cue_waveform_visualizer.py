@@ -1,11 +1,20 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget
-from PyQt6.QtCore import QPointF
-from PyQt6.QtGui import QPainter, QColor, QPen
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QPainter, QColor, QPen, QBrush
 
 
 class CueWaveformVisualizer(QWidget):
-    """Widget to visualize full waveforms overlapping at a cue point."""
+    """Widget to visualize full waveforms overlapping at a cue point.
+    
+    Timeline explanation:
+    - t=0 is when Track A ends (the "cue point" marker)
+    - Track A runs from t=-duration_a to t=0
+    - Track B starts at t=cue_offset (negative value, e.g. -5 means 5 sec before A ends)
+    - Track B runs from t=cue_offset to t=cue_offset+duration_b
+    
+    Durations are adjusted by pitch (higher pitch = shorter playback duration).
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -15,33 +24,42 @@ class CueWaveformVisualizer(QWidget):
         self.waveform_a = None
         self.waveform_b = None
 
+        # Raw durations (before pitch adjustment)
+        self.raw_duration_a = 0.0
+        self.raw_duration_b = 0.0
+        
+        # Playback durations (after pitch adjustment)
         self.duration_a = 0.0
         self.duration_b = 0.0
 
-        self.cue_offset = 0.0
+        self.cue_offset = 0.0  # When track B starts (in playback seconds relative to A's end)
         self.sample_rate = 44100
-        self.pitch_a = 1.0  # Pitch for track A
-        self.pitch_b = 1.0  # Pitch for track B
+        self.pitch_a = 1.0
+        self.pitch_b = 1.0
 
     def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100, pitch_a=1.0, pitch_b=1.0):
         self.sample_rate = sample_rate
-        self.cue_offset = cue_seconds
+        self.cue_offset = cue_seconds  # This is in "real" seconds, not affected by pitch
         self.pitch_a = pitch_a if pitch_a > 0 else 1.0
         self.pitch_b = pitch_b if pitch_b > 0 else 1.0
 
         if track_a_data is not None and len(track_a_data) > 0:
-            # Duration is affected by pitch (higher pitch = shorter duration)
-            self.duration_a = (len(track_a_data) / sample_rate) / self.pitch_a
+            self.raw_duration_a = len(track_a_data) / sample_rate
+            # Playback duration is shorter when pitch is higher
+            self.duration_a = self.raw_duration_a / self.pitch_a
             self.waveform_a = self._downsample_waveform(track_a_data, 800)
         else:
             self.waveform_a = None
+            self.raw_duration_a = 0.0
             self.duration_a = 0.0
 
         if track_b_data is not None and len(track_b_data) > 0:
-            self.duration_b = (len(track_b_data) / sample_rate) / self.pitch_b
+            self.raw_duration_b = len(track_b_data) / sample_rate
+            self.duration_b = self.raw_duration_b / self.pitch_b
             self.waveform_b = self._downsample_waveform(track_b_data, 800)
         else:
             self.waveform_b = None
+            self.raw_duration_b = 0.0
             self.duration_b = 0.0
 
         self.update()
@@ -74,19 +92,35 @@ class CueWaveformVisualizer(QWidget):
         painter.setPen(QPen(QColor(80, 80, 80), 1))
         painter.drawLine(0, center_y, width, center_y)
 
-        # --- OVERLAP TIME RANGE ---
-        overlap_start = max(-self.duration_a, self.cue_offset)
-        overlap_end = min(0.0, self.cue_offset + self.duration_b)
-        overlap_duration = max(0.001, overlap_end - overlap_start)
+        # Timeline:
+        # - Track A ends at t=0
+        # - Track A starts at t=-duration_a
+        # - Track B starts at t=cue_offset (the cue trigger point)
+        # - Track B ends at t=cue_offset + duration_b
+        
+        track_a_start = -self.duration_a
+        track_a_end = 0.0
+        track_b_start = self.cue_offset  # This is when the cue fires and B starts
+        track_b_end = self.cue_offset + self.duration_b
 
-        # --- DYNAMIC ZOOM ---
-        overlap_pixels = width * 0.6
-        seconds_per_pixel = overlap_duration / overlap_pixels
-        visible_duration = width * seconds_per_pixel
-
-        overlap_center = (overlap_start + overlap_end) / 2
-        t_min = overlap_center - visible_duration / 2
-        t_max = overlap_center + visible_duration / 2
+        # Calculate visible time range to show the overlap nicely
+        # We want to see where the tracks overlap
+        overlap_start = max(track_a_start, track_b_start)
+        overlap_end = min(track_a_end, track_b_end)
+        
+        if overlap_end <= overlap_start:
+            # No overlap - just show both tracks
+            t_min = min(track_a_start, track_b_start)
+            t_max = max(track_a_end, track_b_end)
+        else:
+            # Center on the overlap region
+            overlap_duration = overlap_end - overlap_start
+            overlap_center = (overlap_start + overlap_end) / 2
+            
+            # Show enough context around the overlap
+            visible_duration = max(overlap_duration * 2.5, 10.0)  # At least 10 seconds visible
+            t_min = overlap_center - visible_duration / 2
+            t_max = overlap_center + visible_duration / 2
 
         denom = t_max - t_min
         if denom <= 0:
@@ -95,40 +129,45 @@ class CueWaveformVisualizer(QWidget):
         def time_to_x(t):
             return (t - t_min) / denom * width
 
-        # Cue marker
-        cue_x = time_to_x(0.0)
-        painter.setPen(QPen(QColor(255, 255, 0), 2))
-        painter.drawLine(int(cue_x), 0, int(cue_x), height)
-
-        # Track A
+        # Draw Track A waveform (orange)
         if self.waveform_a is not None:
-            self._draw_waveform_fade(
+            self._draw_waveform(
                 painter,
                 self.waveform_a,
-                start_time=-self.duration_a,
-                duration=self.duration_a,
+                start_time=track_a_start,
+                end_time=track_a_end,
                 base_color=QColor(255, 120, 60),
-                overlap_start=overlap_start,
-                overlap_end=overlap_end,
                 time_to_x=time_to_x,
                 center_y=center_y,
-                amplitude=amplitude
+                amplitude=amplitude,
+                fade_start=overlap_start,
+                fade_end=overlap_end
             )
 
-        # Track B
+        # Draw Track B waveform (blue)
         if self.waveform_b is not None:
-            self._draw_waveform_fade(
+            self._draw_waveform(
                 painter,
                 self.waveform_b,
-                start_time=self.cue_offset,
-                duration=self.duration_b,
+                start_time=track_b_start,
+                end_time=track_b_end,
                 base_color=QColor(60, 150, 255),
-                overlap_start=overlap_start,
-                overlap_end=overlap_end,
                 time_to_x=time_to_x,
                 center_y=center_y,
-                amplitude=amplitude
+                amplitude=amplitude,
+                fade_start=overlap_start,
+                fade_end=overlap_end
             )
+
+        # Draw cue trigger marker (where track B starts) - dashed yellow line
+        cue_x = time_to_x(self.cue_offset)
+        painter.setPen(QPen(QColor(255, 255, 0), 2, Qt.PenStyle.DashLine))
+        painter.drawLine(int(cue_x), 0, int(cue_x), height)
+        
+        # Draw track A end marker (solid yellow line at t=0)
+        end_x = time_to_x(0.0)
+        painter.setPen(QPen(QColor(255, 255, 0), 2))
+        painter.drawLine(int(end_x), 0, int(end_x), height)
 
         # Labels
         painter.setPen(QColor(200, 200, 200))
@@ -136,49 +175,51 @@ class CueWaveformVisualizer(QWidget):
         font.setPointSize(9)
         painter.setFont(font)
         painter.drawText(6, 14, f"A: {self.pitch_a:.2f}x")
-        painter.drawText(6, height - 6, f"Cue: {self.cue_offset:.2f}s")
+        painter.drawText(6, height - 6, f"Cue: {self.cue_offset:.1f}s")
         painter.drawText(width - 55, 14, f"B: {self.pitch_b:.2f}x")
 
-    def _draw_waveform_fade(
+    def _draw_waveform(
         self,
         painter,
         waveform,
         start_time,
-        duration,
+        end_time,
         base_color,
-        overlap_start,
-        overlap_end,
         time_to_x,
         center_y,
-        amplitude
+        amplitude,
+        fade_start,
+        fade_end
     ):
+        duration = end_time - start_time
         if waveform is None or duration <= 0 or len(waveform) == 0:
             return
 
-        overlap_width = overlap_end - overlap_start
-        if overlap_width <= 0:
-            overlap_width = None  # disables fade logic safely
-
+        fade_width = fade_end - fade_start
         n = len(waveform)
 
         for i in range(n - 1):
-            t = start_time + (i / n) * duration
+            # Map waveform index to time
+            t1 = start_time + (i / n) * duration
+            t2 = start_time + ((i + 1) / n) * duration
+            
             v1 = waveform[i]
             v2 = waveform[i + 1]
 
-            x1 = time_to_x(t)
-            x2 = time_to_x(start_time + ((i + 1) / n) * duration)
+            x1 = time_to_x(t1)
+            x2 = time_to_x(t2)
 
             y1 = center_y + v1 * amplitude
             y2 = center_y + v2 * amplitude
 
+            # Calculate alpha for crossfade effect in overlap region
             alpha = 255
-
-            if overlap_width and overlap_start <= t <= overlap_end:
-                center = (overlap_start + overlap_end) / 2
-                fade = abs(t - center) / overlap_width
-                fade = min(max(fade, 0.0), 1.0)
-                alpha = int(255 * (0.3 + 0.7 * fade))
+            if fade_width > 0 and fade_start <= t1 <= fade_end:
+                # Fade based on distance from center of overlap
+                center = (fade_start + fade_end) / 2
+                dist_from_center = abs(t1 - center) / (fade_width / 2)
+                dist_from_center = min(dist_from_center, 1.0)
+                alpha = int(255 * (0.3 + 0.7 * dist_from_center))
 
             color = QColor(base_color)
             color.setAlpha(alpha)
