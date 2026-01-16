@@ -7,7 +7,7 @@ import traceback
 import time
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QSlider, QStackedWidget
+    QSlider, QStackedWidget, QDoubleSpinBox
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
@@ -102,6 +102,12 @@ class Music(AudioModule):
         self.cue_time = -5.0
         self.cue_sent = False
         self.current_cue_out = None
+        
+        # Crossfade system
+        self.crossfade_duration = 0.0  # 0 = disabled
+        self.crossfade_active = False
+        self.crossfade_progress = 0.0  # 0.0 to 1.0
+        self.fade_in_mode = False  # True if this module is fading IN (was cued by another)
 
         # Tap tempo
         self.tap_times = []
@@ -151,13 +157,13 @@ class Music(AudioModule):
         if index not in self.audio_cache:
             self.load_audio_file(index)
         
-        # Update cue slider range
+        # Update cue slider and spinbox range
         song_length = metadata['length']
         if hasattr(self, 'cue_slider'):
-            self.cue_slider.setMinimum(int(-song_length * 1000))
+            self.cue_slider.setMinimum(int(-song_length * 100))
             self.cue_slider.setMaximum(0)
-            # Update tick labels
-            self.update_cue_tick_labels(song_length)
+        if hasattr(self, 'cue_spinbox'):
+            self.cue_spinbox.setRange(-float(song_length), 0.0)
         
         # Update visualizer
         self.update_cue_visualizer()
@@ -230,12 +236,29 @@ class Music(AudioModule):
         cue_out = np.zeros((frames, 1), dtype=np.float32)
         audio_out = np.zeros((frames, 2), dtype=np.float32)
         
-        # Check for incoming cue
+        # Check for incoming cue (starts this track, possibly with fade-in)
         if not self.playing and self.input_nodes and len(self.input_nodes) > 0:
             try:
                 cue_in = self.input_nodes[0].receive(frames)
                 if isinstance(cue_in, np.ndarray) and cue_in.size > 0:
                     if np.any(cue_in >= 0.5):
+                        # Check if the sender has crossfade enabled
+                        sender_crossfade = 0.0
+                        if len(self.input_nodes) > 0:
+                            sender = self.input_nodes[0].get_connected()
+                            if sender and hasattr(sender, 'crossfade_duration'):
+                                sender_crossfade = sender.crossfade_duration
+                        
+                        if sender_crossfade > 0:
+                            # Start with fade-in
+                            self.fade_in_mode = True
+                            self.crossfade_active = True
+                            self.crossfade_progress = 0.0
+                            self.crossfade_duration = sender_crossfade  # Match sender's duration
+                        else:
+                            self.fade_in_mode = False
+                            self.crossfade_active = False
+                        
                         self.toggle_play()
             except Exception:
                 pass
@@ -277,6 +300,46 @@ class Music(AudioModule):
                 cue_idx = np.where(crossed)[0][0] + 1
                 cue_out[cue_idx, 0] = 1.0
                 self.cue_sent = True
+                
+                # Start crossfade (fade-out) if enabled
+                if self.crossfade_duration > 0:
+                    self.crossfade_active = True
+                    self.crossfade_progress = 0.0
+                    self.fade_in_mode = False  # This track is fading OUT
+
+        # Apply crossfade envelope
+        if self.crossfade_active and self.crossfade_duration > 0:
+            # Calculate progress increment per frame
+            progress_per_frame = 1.0 / (self.crossfade_duration * self.sample_rate)
+            
+            # Create envelope for this buffer
+            start_progress = self.crossfade_progress
+            end_progress = min(1.0, start_progress + progress_per_frame * frames)
+            
+            # Linear ramp from start to end progress
+            envelope = np.linspace(start_progress, end_progress, frames)
+            
+            if self.fade_in_mode:
+                # Fading IN: envelope goes 0 -> 1
+                gain = envelope
+            else:
+                # Fading OUT: envelope goes 1 -> 0
+                gain = 1.0 - envelope
+            
+            # Apply gain to audio
+            audio_out *= gain[:, np.newaxis]
+            
+            # Update progress
+            self.crossfade_progress = end_progress
+            
+            # Check if crossfade complete
+            if self.crossfade_progress >= 1.0:
+                self.crossfade_active = False
+                if not self.fade_in_mode:
+                    # Fade-out complete, stop playback
+                    self.playing = False
+                    if hasattr(self, 'vinyl_widget'):
+                        self.vinyl_widget.set_playing(False)
 
         self.playhead += step * frames
 
@@ -289,6 +352,7 @@ class Music(AudioModule):
             else:
                 self.playhead = 0.0
                 self.cue_sent = False
+                self.crossfade_active = False
 
         self.current_cue_out = cue_out
         return audio_out
@@ -393,11 +457,7 @@ class Music(AudioModule):
         self.vinyl_widget.on_play_clicked = self.toggle_play
         layout.addWidget(self.vinyl_widget)
 
-        # Playlist (handles its own folder/song navigation)
-        self.playlist_widget = Playlist(self.playlists_base_dir)
-        layout.addWidget(self.playlist_widget)
-
-        # Scrub/seek slider + remaining time (moved here, between playlist and controls)
+        # Scrub/seek slider + remaining time (above playlist)
         scrub_section = QVBoxLayout()
         scrub_section.setSpacing(1)
         
@@ -459,6 +519,10 @@ class Music(AudioModule):
         scrub_section.addWidget(self.scrub_slider)
         layout.addLayout(scrub_section)
 
+        # Playlist (handles its own folder/song navigation)
+        self.playlist_widget = Playlist(self.playlists_base_dir)
+        layout.addWidget(self.playlist_widget)
+
         # Control buttons row (reverse + loop)
         ctrl_layout = QHBoxLayout()
         ctrl_layout.setSpacing(6)
@@ -514,23 +578,128 @@ class Music(AudioModule):
         self.cue_visualizer.setMaximumHeight(80)
         cue_section_layout.addWidget(self.cue_visualizer)
 
-        # Cue slider - higher granularity (1000 = 1 second, allows 0.001s precision)
+        # Cue control row: label + spinbox + fine tune buttons + crossfade
+        cue_control_row = QHBoxLayout()
+        cue_control_row.setSpacing(2)
+        cue_control_row.setContentsMargins(0, 0, 0, 0)
+        
+        cue_label = QLabel("Cue:")
+        cue_label.setStyleSheet("color: #FFFF00; font-size: 9px; font-weight: bold;")
+        cue_control_row.addWidget(cue_label)
+        
+        # Spin box for precise cue value (in seconds) - no arrows
+        self.cue_spinbox = QDoubleSpinBox()
+        self.cue_spinbox.setRange(-300.0, 0.0)
+        self.cue_spinbox.setValue(self.cue_time)
+        self.cue_spinbox.setSingleStep(0.1)
+        self.cue_spinbox.setDecimals(2)
+        self.cue_spinbox.setSuffix("s")
+        self.cue_spinbox.setFixedWidth(62)
+        self.cue_spinbox.setFixedHeight(18)
+        self.cue_spinbox.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.cue_spinbox.setStyleSheet("""
+            QDoubleSpinBox {
+                background-color: #2a2a2a;
+                color: #FFFF00;
+                border: 1px solid #555;
+                border-radius: 2px;
+                padding: 1px 2px;
+                font-size: 10px;
+            }
+        """)
+        cue_control_row.addWidget(self.cue_spinbox)
+        
+        # Fine tune buttons (-1s, -0.1s, +0.1s, +1s)
+        def make_cue_btn(text, delta):
+            btn = QPushButton(text)
+            btn.setFixedSize(22, 16)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a3a3a;
+                    color: #ccc;
+                    font-size: 8px;
+                    border-radius: 2px;
+                    border: 1px solid #555;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                    color: white;
+                }
+                QPushButton:pressed {
+                    background-color: #2a2a2a;
+                }
+            """)
+            btn.clicked.connect(lambda: self._adjust_cue(delta))
+            return btn
+        
+        cue_control_row.addWidget(make_cue_btn("-1", -1.0))
+        cue_control_row.addWidget(make_cue_btn("-.1", -0.1))
+        cue_control_row.addWidget(make_cue_btn("+.1", 0.1))
+        cue_control_row.addWidget(make_cue_btn("+1", 1.0))
+        
+        # Spacer
+        cue_control_row.addSpacing(4)
+        
+        # Crossfade control (0 = disabled) - with arrows
+        xfade_label = QLabel("Fade:")
+        xfade_label.setStyleSheet("color: #aaa; font-size: 9px;")
+        cue_control_row.addWidget(xfade_label)
+        
+        self.crossfade_spinbox = QDoubleSpinBox()
+        self.crossfade_spinbox.setRange(0.0, 30.0)
+        self.crossfade_spinbox.setValue(self.crossfade_duration)
+        self.crossfade_spinbox.setSingleStep(0.5)
+        self.crossfade_spinbox.setDecimals(1)
+        self.crossfade_spinbox.setSuffix("s")
+        self.crossfade_spinbox.setFixedWidth(58)
+        self.crossfade_spinbox.setFixedHeight(18)
+        self.crossfade_spinbox.setStyleSheet("""
+            QDoubleSpinBox {
+                background-color: #2a2a2a;
+                color: #aaa;
+                border: 1px solid #555;
+                border-radius: 2px;
+                padding: 1px 2px;
+                font-size: 9px;
+            }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                background-color: #3a3a3a;
+                border: none;
+                width: 12px;
+            }
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+        self.crossfade_spinbox.setToolTip("Crossfade duration (0 = disabled)")
+        
+        def on_crossfade_change(val):
+            self.crossfade_duration = val
+        
+        self.crossfade_spinbox.valueChanged.connect(on_crossfade_change)
+        cue_control_row.addWidget(self.crossfade_spinbox)
+        
+        cue_control_row.addStretch()
+        cue_section_layout.addLayout(cue_control_row)
+
+        # Cue slider for coarse positioning (full song range)
         self.cue_slider = QSlider(Qt.Orientation.Horizontal)
-        self.cue_slider.setMinimum(-20000)  # -20 seconds
-        self.cue_slider.setMaximum(0)  # 0 = play immediately when first song ends
-        self.cue_slider.setValue(int(self.cue_time * 1000))
-        self.cue_slider.setFixedHeight(18)
+        self.cue_slider.setMinimum(-20000)  # -20 seconds default, updated per song
+        self.cue_slider.setMaximum(0)
+        self.cue_slider.setValue(int(self.cue_time * 100))  # 100 units per second for slider
+        self.cue_slider.setFixedHeight(16)
         self.cue_slider.setStyleSheet("""
             QSlider::groove:horizontal {
                 background: #333;
-                height: 5px;
+                height: 4px;
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
                 background: #FFFF00;
-                width: 12px;
-                margin: -4px 0;
-                border-radius: 6px;
+                width: 10px;
+                margin: -3px 0;
+                border-radius: 5px;
             }
             QSlider::sub-page:horizontal {
                 background: #666;
@@ -539,17 +708,33 @@ class Music(AudioModule):
         """)
         cue_section_layout.addWidget(self.cue_slider)
         
-        def on_cue_change(val):
-            self.cue_time = val / 1000.0  # Now in milliseconds for finer control
+        # Sync between slider and spinbox
+        self._cue_updating = False
+        
+        def on_cue_slider_change(val):
+            if self._cue_updating:
+                return
+            self._cue_updating = True
+            self.cue_time = val / 100.0
+            self.cue_spinbox.setValue(self.cue_time)
             self.cue_sent = False
             self.update_cue_visualizer()
+            self._cue_updating = False
         
-        self.cue_slider.valueChanged.connect(on_cue_change)
+        def on_cue_spinbox_change(val):
+            if self._cue_updating:
+                return
+            self._cue_updating = True
+            self.cue_time = val
+            # Clamp slider to its range
+            slider_val = max(self.cue_slider.minimum(), min(0, int(val * 100)))
+            self.cue_slider.setValue(slider_val)
+            self.cue_sent = False
+            self.update_cue_visualizer()
+            self._cue_updating = False
         
-        self.cue_tick_layout = QHBoxLayout()
-        self.cue_tick_layout.setSpacing(0)
-        cue_section_layout.addLayout(self.cue_tick_layout)
-        self.update_cue_tick_labels(20)  # Default 20s
+        self.cue_slider.valueChanged.connect(on_cue_slider_change)
+        self.cue_spinbox.valueChanged.connect(on_cue_spinbox_change)
         
         # Hide cue section by default
         self.cue_section_widget.hide()
@@ -714,6 +899,14 @@ class Music(AudioModule):
                 progress = value / 1000.0
                 self.playhead = progress * len(track)
                 self.cue_sent = False  # Reset cue so it can trigger again
+    
+    def _adjust_cue(self, delta):
+        """Adjust cue time by delta seconds."""
+        new_val = self.cue_time + delta
+        # Clamp to valid range (can't be positive, and not beyond song length)
+        min_val = self.cue_spinbox.minimum() if hasattr(self, 'cue_spinbox') else -300.0
+        new_val = max(min_val, min(0.0, new_val))
+        self.cue_spinbox.setValue(new_val)
 
     def cleanup(self):
         # Stop timers first to prevent callbacks after widget deletion
