@@ -391,6 +391,9 @@ class Music(AudioModule):
         self.vinyl_widget.on_play_clicked = self.toggle_play
         layout.addWidget(self.vinyl_widget)
 
+        # Playlist (handles its own folder/song navigation)
+        self.playlist_widget = Playlist(self.playlists_base_dir)
+        layout.addWidget(self.playlist_widget)
 
         # Scrub/seek slider + remaining time (moved here, between playlist and controls)
         scrub_section = QVBoxLayout()
@@ -497,10 +500,6 @@ class Music(AudioModule):
         ctrl_layout.addWidget(self.loop_btn)
         ctrl_layout.addStretch()
         layout.addLayout(ctrl_layout)
-
-        # Playlist (handles its own folder/song navigation)
-        self.playlist_widget = Playlist(self.playlists_base_dir)
-        layout.addWidget(self.playlist_widget)
 
         # Cue section container (hidden by default, shown when cue_out connected)
         self.cue_section_widget = QWidget()
@@ -631,36 +630,50 @@ class Music(AudioModule):
         self.update_timer.setInterval(50)
         
         def update_ui():
+            # Safety check - if widget was deleted, stop
+            try:
+                if not self.cue_section_widget or not self.scrub_slider:
+                    return
+            except RuntimeError:
+                # Widget was deleted
+                return
+            
             # Check cue_out connection status and show/hide cue section
             cue_connected = False
             if len(self.output_nodes) > 1:
                 cue_connected = self.output_nodes[1].get_connected() is not None
             
-            if cue_connected and not self.cue_section_widget.isVisible():
-                self.cue_section_widget.show()
-                self.update_cue_visualizer()
-            elif not cue_connected and self.cue_section_widget.isVisible():
-                self.cue_section_widget.hide()
+            try:
+                if cue_connected and not self.cue_section_widget.isVisible():
+                    self.cue_section_widget.show()
+                    self.update_cue_visualizer()
+                elif not cue_connected and self.cue_section_widget.isVisible():
+                    self.cue_section_widget.hide()
+            except RuntimeError:
+                return
             
             # Update playback UI
             if self.playing and self.current_index is not None and not self.scrubbing_user:
                 track = self.play_buffer
                 if track is not None and len(track) > 0:
                     progress = min(max(self.playhead / len(track), 0.0), 1.0)
-                    self.scrub_slider.blockSignals(True)
-                    self.scrub_slider.setValue(int(progress * 1000))
-                    self.scrub_slider.blockSignals(False)
+                    try:
+                        self.scrub_slider.blockSignals(True)
+                        self.scrub_slider.setValue(int(progress * 1000))
+                        self.scrub_slider.blockSignals(False)
 
-                    remaining_samples = len(track) - int(self.playhead)
-                    remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
-                    mins, secs = divmod(int(remaining_seconds), 60)
+                        remaining_samples = len(track) - int(self.playhead)
+                        remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
+                        mins, secs = divmod(int(remaining_seconds), 60)
 
-                    auto_bpm = "---" if self.song_bpm is None else f"{self.song_bpm * self.pitch:06.2f}"
-                    bpm_display = f"BPM: {auto_bpm}"
-                    if self.tapped_bpm:
-                        bpm_display = f"Auto: {auto_bpm} | Tap: {self.tapped_bpm:06.2f}"
+                        auto_bpm = "---" if self.song_bpm is None else f"{self.song_bpm * self.pitch:06.2f}"
+                        bpm_display = f"BPM: {auto_bpm}"
+                        if self.tapped_bpm:
+                            bpm_display = f"Auto: {auto_bpm} | Tap: {self.tapped_bpm:06.2f}"
 
-                    self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}  |  {bpm_display}")
+                        self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}  |  {bpm_display}")
+                    except RuntimeError:
+                        return
         
         self.update_timer.timeout.connect(update_ui)
         self.update_timer.start()
@@ -686,9 +699,12 @@ class Music(AudioModule):
                 self.cue_sent = False  # Reset cue so it can trigger again
 
     def cleanup(self):
+        # Stop timers first to prevent callbacks after widget deletion
         if hasattr(self, "update_timer") and self.update_timer:
             self.update_timer.stop()
             self.update_timer.deleteLater()
+            self.update_timer = None
         if hasattr(self, "tap_reset_timer") and self.tap_reset_timer:
             self.tap_reset_timer.stop()
             self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
