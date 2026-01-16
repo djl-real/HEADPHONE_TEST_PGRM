@@ -141,7 +141,8 @@ class CueWaveformVisualizer(QWidget):
                 center_y=center_y,
                 amplitude=amplitude,
                 fade_start=overlap_start,
-                fade_end=overlap_end
+                fade_end=overlap_end,
+                is_track_b=False
             )
 
         # Draw Track B waveform (blue)
@@ -156,7 +157,8 @@ class CueWaveformVisualizer(QWidget):
                 center_y=center_y,
                 amplitude=amplitude,
                 fade_start=overlap_start,
-                fade_end=overlap_end
+                fade_end=overlap_end,
+                is_track_b=True
             )
 
         # Draw cue trigger marker (where track B starts) - dashed yellow line
@@ -189,7 +191,8 @@ class CueWaveformVisualizer(QWidget):
         center_y,
         amplitude,
         fade_start,
-        fade_end
+        fade_end,
+        is_track_b=False
     ):
         duration = end_time - start_time
         if waveform is None or duration <= 0 or len(waveform) == 0:
@@ -197,6 +200,15 @@ class CueWaveformVisualizer(QWidget):
 
         fade_width = fade_end - fade_start
         n = len(waveform)
+        
+        # Calculate how compressed this waveform is (for opacity adjustment)
+        # More compressed waveforms (higher pitch) need lower opacity in overlap
+        # so the other track remains visible
+        compression_factor = 1.0
+        if is_track_b and self.pitch_b > 1.0:
+            compression_factor = self.pitch_b
+        elif not is_track_b and self.pitch_a > 1.0:
+            compression_factor = self.pitch_a
 
         for i in range(n - 1):
             # Map waveform index to time
@@ -219,7 +231,18 @@ class CueWaveformVisualizer(QWidget):
                 center = (fade_start + fade_end) / 2
                 dist_from_center = abs(t1 - center) / (fade_width / 2)
                 dist_from_center = min(dist_from_center, 1.0)
-                alpha = int(255 * (0.3 + 0.7 * dist_from_center))
+                
+                # Base opacity calculation
+                base_alpha = 0.3 + 0.7 * dist_from_center
+                
+                # Reduce opacity more for compressed (high pitch) waveforms
+                # This makes the other track more visible
+                if compression_factor > 1.0:
+                    # Higher compression = lower opacity in overlap
+                    opacity_reduction = min(compression_factor / 3.0, 0.5)  # Cap at 50% reduction
+                    base_alpha = base_alpha * (1.0 - opacity_reduction)
+                
+                alpha = int(255 * base_alpha)
 
             color = QColor(base_color)
             color.setAlpha(alpha)

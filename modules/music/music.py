@@ -154,7 +154,7 @@ class Music(AudioModule):
         # Update cue slider range
         song_length = metadata['length']
         if hasattr(self, 'cue_slider'):
-            self.cue_slider.setMinimum(int(-song_length * 100))
+            self.cue_slider.setMinimum(int(-song_length * 1000))
             self.cue_slider.setMaximum(0)
             # Update tick labels
             self.update_cue_tick_labels(song_length)
@@ -264,12 +264,14 @@ class Music(AudioModule):
         audio_out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
                                  frac[valid_mask, None] * track[idx_floor[valid_mask] + 1]
 
-        # Cue logic
+        # Cue logic - fires when remaining time crosses the threshold
+        # cue_time is negative (e.g., -5.0 means 5 seconds before end)
+        # cue_time = 0 means fire exactly when song ends
         remaining_samples = n_samples - indices
         remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
         
-        if not self.cue_sent and self.cue_time < 0:
-            cue_threshold = -self.cue_time
+        if not self.cue_sent and self.cue_time <= 0:
+            cue_threshold = -self.cue_time  # Convert to positive threshold
             crossed = (remaining_seconds[:-1] > cue_threshold) & (remaining_seconds[1:] <= cue_threshold)
             if np.any(crossed):
                 cue_idx = np.where(crossed)[0][0] + 1
@@ -512,11 +514,11 @@ class Music(AudioModule):
         self.cue_visualizer.setMaximumHeight(80)
         cue_section_layout.addWidget(self.cue_visualizer)
 
-        # Cue slider
+        # Cue slider - higher granularity (1000 = 1 second, allows 0.001s precision)
         self.cue_slider = QSlider(Qt.Orientation.Horizontal)
-        self.cue_slider.setMinimum(-2000)
-        self.cue_slider.setMaximum(0)
-        self.cue_slider.setValue(int(self.cue_time * 100))
+        self.cue_slider.setMinimum(-20000)  # -20 seconds
+        self.cue_slider.setMaximum(0)  # 0 = play immediately when first song ends
+        self.cue_slider.setValue(int(self.cue_time * 1000))
         self.cue_slider.setFixedHeight(18)
         self.cue_slider.setStyleSheet("""
             QSlider::groove:horizontal {
@@ -538,7 +540,7 @@ class Music(AudioModule):
         cue_section_layout.addWidget(self.cue_slider)
         
         def on_cue_change(val):
-            self.cue_time = val / 100.0
+            self.cue_time = val / 1000.0  # Now in milliseconds for finer control
             self.cue_sent = False
             self.update_cue_visualizer()
         
@@ -625,6 +627,9 @@ class Music(AudioModule):
         self.pitch_reset_btn.clicked.connect(reset_pitch)
         layout.addLayout(pitch_section)
 
+        # Track connected module's pitch for visualizer updates
+        self._last_connected_pitch = 1.0
+        
         # Timer for UI updates
         self.update_timer = QTimer()
         self.update_timer.setInterval(50)
@@ -640,8 +645,14 @@ class Music(AudioModule):
             
             # Check cue_out connection status and show/hide cue section
             cue_connected = False
+            connected_pitch = 1.0
             if len(self.output_nodes) > 1:
-                cue_connected = self.output_nodes[1].get_connected() is not None
+                connected_module = self.output_nodes[1].get_connected()
+                if connected_module is not None:
+                    cue_connected = True
+                    # Check if connected module has a pitch attribute
+                    if hasattr(connected_module, 'pitch'):
+                        connected_pitch = connected_module.pitch
             
             try:
                 if cue_connected and not self.cue_section_widget.isVisible():
@@ -649,6 +660,12 @@ class Music(AudioModule):
                     self.update_cue_visualizer()
                 elif not cue_connected and self.cue_section_widget.isVisible():
                     self.cue_section_widget.hide()
+                
+                # Update visualizer if connected module's pitch changed
+                if cue_connected and connected_pitch != self._last_connected_pitch:
+                    self._last_connected_pitch = connected_pitch
+                    self.update_cue_visualizer()
+                    
             except RuntimeError:
                 return
             
