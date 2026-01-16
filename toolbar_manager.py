@@ -27,6 +27,7 @@ from modules.vocoder import Vocoder
 from modules.microphone import Microphone
 from modules.const import Const
 from modules.tts.mimic_tts import MimicTTS
+from modules.clip import Clip
 
 from modules.pantest import PanTest
 
@@ -78,6 +79,7 @@ class ToolbarManager:
                 ("Pan", Pan),
                 ("Hold", Hold),
                 ("Slowdown", Slowdown),
+                ("Clip", Clip),
                 ("Bitcrusher", Bitcrusher),
                 ("Reverb", Reverb),
                 ("Bandpass", Bandpass),
