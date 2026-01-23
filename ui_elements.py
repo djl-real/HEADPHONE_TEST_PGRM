@@ -98,6 +98,22 @@ class ConnectionPath(QGraphicsPathItem):
         self.start_node = None
         self.end_node = None
 
+    def is_audio_connection(self) -> bool:
+        """Check if this connection is between audio-type nodes."""
+        start_is_audio = (
+            self.start_node and 
+            self.start_node.node_obj and 
+            hasattr(self.start_node.node_obj, 'data_type') and 
+            self.start_node.node_obj.data_type == "audio"
+        )
+        end_is_audio = (
+            self.end_node and 
+            self.end_node.node_obj and 
+            hasattr(self.end_node.node_obj, 'data_type') and 
+            self.end_node.node_obj.data_type == "audio"
+        )
+        return start_is_audio and end_is_audio
+
 
 class NodeCircle(QGraphicsEllipseItem):
     """Clickable circle representing an input or output node."""
@@ -163,26 +179,65 @@ class NodeCircle(QGraphicsEllipseItem):
         label_width = self.label.boundingRect().width()
         label_height = self.label.boundingRect().height()
         
+        # Get the node's position within the parent module
+        node_x = self.pos().x()
+        node_y = self.pos().y()
+        
         # Get custom position from node_obj if available
         custom_position = None
         if self.node_obj and hasattr(self.node_obj, 'position'):
             custom_position = self.node_obj.position
         
-        # Position label based on custom position or defaults
+        # Calculate label position based on custom position or defaults
         if custom_position == "top":
-            self.label.setPos(-label_width / 2, -self.RADIUS - label_height - 2)
+            label_x = node_x - label_width / 2
+            label_y = node_y + self.RADIUS + 4
         elif custom_position == "bottom":
-            self.label.setPos(-label_width / 2, self.RADIUS + 2)
+            label_x = node_x - label_width / 2
+            label_y = node_y - self.RADIUS - label_height - 4
         elif custom_position == "left":
-            self.label.setPos(-label_width - self.RADIUS - 5, -label_height / 2)
+            label_x = node_x + self.RADIUS + 6
+            label_y = node_y - label_height / 2
         elif custom_position == "right":
-            self.label.setPos(self.RADIUS + 5, -label_height / 2)
+            label_x = node_x - label_width - self.RADIUS - 6
+            label_y = node_y - label_height / 2
         else:
             # Default positioning based on node type
             if self.node_type == "input":
-                self.label.setPos(-label_width - self.RADIUS - 5, -label_height / 2)
-            else:  # output
-                self.label.setPos(self.RADIUS + 5, -label_height / 2)
+                # Input nodes are on the left, so label goes to the right of the node
+                label_x = node_x + self.RADIUS + 6
+                label_y = node_y - label_height / 2
+            else:
+                # Output nodes are on the right, so label goes to the left of the node
+                label_x = node_x - label_width - self.RADIUS - 6
+                label_y = node_y - label_height / 2
+        
+        self.label.setPos(label_x, label_y)
+
+    def is_audio_node(self) -> bool:
+        """Check if this node has data_type == 'audio'."""
+        return (
+            self.node_obj and 
+            hasattr(self.node_obj, 'data_type') and 
+            self.node_obj.data_type == "audio"
+        )
+
+    def get_data_type(self) -> str | None:
+        """Get the data_type of this node, or None if not set."""
+        if self.node_obj and hasattr(self.node_obj, 'data_type'):
+            return self.node_obj.data_type
+        return None
+
+    def can_connect_to(self, other: "NodeCircle") -> bool:
+        """Check if this node can connect to another node based on data types."""
+        self_type = self.get_data_type()
+        other_type = other.get_data_type()
+        
+        # If either node doesn't have a data_type, allow connection (backward compatibility)
+        if self_type is None or other_type is None:
+            return True
+        
+        return self_type == other_type
 
     def connect(self, dst: "NodeCircle"):
         """
@@ -196,6 +251,11 @@ class NodeCircle(QGraphicsEllipseItem):
         # Validate types
         if self.node_type != "output" or dst.node_type != "input":
             print("⚠️ NodeCircle.connect: invalid direction")
+            return False
+
+        # Validate data types match
+        if not self.can_connect_to(dst):
+            print(f"⚠️ NodeCircle.connect: data type mismatch ({self.get_data_type()} vs {dst.get_data_type()})")
             return False
 
         sc = self.scene()
@@ -275,7 +335,10 @@ class NodeCircle(QGraphicsEllipseItem):
                 scene_pos = self.mapToScene(event.pos())
                 items = self.scene().items(scene_pos) if self.scene() else []
                 target_input = next(
-                    (it for it in items if isinstance(it, NodeCircle) and it.node_type == "input"),
+                    (it for it in items 
+                     if isinstance(it, NodeCircle) 
+                     and it.node_type == "input"
+                     and self.can_connect_to(it)),  # Check data type compatibility
                     None
                 )
 
@@ -540,6 +603,33 @@ class ModuleItem(QGraphicsRectItem):
                 node.setPos(0, start_y + idx * spacing)
                 node.update_label_position()
 
+    def has_free_connections(self) -> bool:
+        """Check if all input and output nodes are unconnected."""
+        for node in self.input_nodes + self.output_nodes:
+            if node.connection is not None:
+                return False
+        return True
+
+    def get_audio_input_nodes(self) -> list[NodeCircle]:
+        """Get all input nodes that have data_type == 'audio'."""
+        return [n for n in self.input_nodes if n.is_audio_node()]
+
+    def get_audio_output_nodes(self) -> list[NodeCircle]:
+        """Get all output nodes that have data_type == 'audio'."""
+        return [n for n in self.output_nodes if n.is_audio_node()]
+
+    def can_insert(self) -> bool:
+        """Check if this module can be inserted into a connection.
+        
+        Requirements:
+        - Must have at least one audio input node
+        - Must have at least one audio output node
+        - All connections must be free (no existing connections)
+        """
+        has_audio_input = len(self.get_audio_input_nodes()) > 0
+        has_audio_output = len(self.get_audio_output_nodes()) > 0
+        return has_audio_input and has_audio_output and self.has_free_connections()
+
     def cleanup(self):
         """
         Safely clean up and remove module from scene.
@@ -642,14 +732,18 @@ class ModuleItem(QGraphicsRectItem):
                     except Exception:
                         pass
 
-            # Only highlight if module has at least 1 input and 1 output
-            if len(self.input_nodes) > 0 and len(self.output_nodes) > 0 and self.scene():
+            # Only highlight if module can be inserted (has free connections and audio nodes)
+            if self.can_insert() and self.scene():
                 module_rect = self.sceneBoundingRect()
                 for item in self.scene().items():
                     if isinstance(item, ConnectionPath):
                         # Skip connections where this module is already the start or end
                         if (item.start_node and item.start_node.module_item == self) or \
                            (item.end_node and item.end_node.module_item == self):
+                            continue
+
+                        # Only highlight audio connections
+                        if not item.is_audio_connection():
                             continue
 
                         path_rect = item.boundingRect().translated(item.scenePos())
@@ -662,18 +756,35 @@ class ModuleItem(QGraphicsRectItem):
 
         return super().itemChange(change, value)
 
-    def insert(self, input_node: NodeCircle, output_node: NodeCircle):
-        """Insert this module between two existing NodeCircles (input and output)."""
-        if not (self.input_nodes and self.output_nodes):
-            print("not enough")
+    def insert(self, output_node: NodeCircle, input_node: NodeCircle):
+        """Insert this module between two existing NodeCircles.
+        
+        Parameters:
+            output_node: The upstream output node (source of the connection)
+            input_node: The downstream input node (destination of the connection)
+        """
+        # Check if this module can be inserted
+        if not self.can_insert():
+            print("Cannot insert: module has existing connections or no audio nodes")
             return
+
+        # Get the first available audio input and output nodes for this module
+        audio_inputs = self.get_audio_input_nodes()
+        audio_outputs = self.get_audio_output_nodes()
+        
+        if not audio_inputs or not audio_outputs:
+            print("Cannot insert: no audio input/output nodes available")
+            return
+
+        my_input = audio_inputs[0]
+        my_output = audio_outputs[0]
 
         backend_input = input_node.node_obj
         backend_output = output_node.node_obj
 
         # Frontend: remove old connection
-        if input_node.connection:
-            input_node.connection.disconnect()
+        if output_node.connection:
+            output_node.connection.disconnect()
 
         if backend_input and backend_output:
             try:
@@ -684,27 +795,32 @@ class ModuleItem(QGraphicsRectItem):
 
         # Create new connections visually
         try:
-            new_conn_start = ConnectionPath(input_node, self.input_nodes[0], scene=self.scene())
-            input_node.connection = new_conn_start
-            self.input_nodes[0].connection = new_conn_start
+            # Connect upstream output to our input
+            new_conn_start = ConnectionPath(output_node, my_input, scene=self.scene())
+            output_node.connection = new_conn_start
+            my_input.connection = new_conn_start
 
-            new_conn_end = ConnectionPath(self.output_nodes[0], output_node, scene=self.scene())
-            self.output_nodes[0].connection = new_conn_end
-            output_node.connection = new_conn_end
+            # Connect our output to downstream input
+            new_conn_end = ConnectionPath(my_output, input_node, scene=self.scene())
+            my_output.connection = new_conn_end
+            input_node.connection = new_conn_end
         except Exception:
             print("ui failed")
+            traceback.print_exc()
 
     def mouseReleaseEvent(self, event):
         """Finalize dragging and insert module if released over a highlighted connection."""
         super().mouseReleaseEvent(event)
 
-        if len(self.input_nodes) < 1 or len(self.output_nodes) < 1 or not self.scene():
+        # Check if this module can be inserted
+        if not self.can_insert() or not self.scene():
             return
 
         module_rect = self.sceneBoundingRect()
         highlighted_connections = [
             item for item in self.scene().items()
             if isinstance(item, ConnectionPath)
+            and item.is_audio_connection()  # Only consider audio connections
             and item.pen().color() == self.HIGHLIGHT_COLOR
             and module_rect.intersects(item.boundingRect().translated(item.scenePos()))
         ]
