@@ -43,6 +43,17 @@ class Crossfade(AudioModule):
             label.setText(f"Crossfade: {self.crossfade:.2f}")
 
         slider.valueChanged.connect(on_slider)
+
+        from PyQt6.QtWidgets import QPushButton
+        flip_button = QPushButton("Flip")
+        layout.addWidget(flip_button)
+
+        def on_flip():
+            self.crossfade = 1.0 - self.crossfade
+            slider.setValue(int(self.crossfade * 1000))
+
+        flip_button.clicked.connect(on_flip)
+
         return widget
     
     # ---------------- Serialization ----------------
