@@ -4,6 +4,8 @@
 # Get directory of this script
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+export PATH="/home/dj/Dev/mimic1:$PATH"
+
 # Activate virtual environment
 source "$DIR/.venv/bin/activate"
 
