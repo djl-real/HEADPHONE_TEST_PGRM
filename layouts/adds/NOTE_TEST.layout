@@ -1,0 +1,28 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1900048700416",
+            "type": "Note",
+            "pos": [
+                60.0,
+                -131.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 0,
+                "input_types": [],
+                "output_types": [],
+                "input_colors": [],
+                "output_colors": [],
+                "input_positions": [],
+                "output_positions": [],
+                "input_labels": [],
+                "output_labels": [],
+                "sample_rate": 44100,
+                "text": "\\*hi*\n\n"
+            }
+        }
+    ],
+    "connections": []
+}

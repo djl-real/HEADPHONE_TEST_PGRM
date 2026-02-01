@@ -27,6 +27,7 @@ from modules.vocoder import Vocoder
 from modules.microphone import Microphone
 from modules.const import Const
 from modules.clip import Clip
+from modules.note import Note
 
 from modules.pantest import PanTest
 
@@ -96,6 +97,7 @@ class ToolbarManager:
                 ("Split", Split)
             ],
             "Other": [
+                ("Note", Note),
                 ("Const", Const),
                 ("PanTest", PanTest)
             ],
