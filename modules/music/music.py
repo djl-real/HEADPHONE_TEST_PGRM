@@ -1,4 +1,5 @@
 import os
+import re
 import numpy as np
 import soundfile as sf
 import librosa
@@ -7,7 +8,7 @@ import traceback
 import time
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QSlider, QStackedWidget, QDoubleSpinBox
+    QSlider, QStackedWidget, QDoubleSpinBox, QApplication
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
@@ -484,8 +485,26 @@ class Music(AudioModule):
         """)
         self.tap_btn.clicked.connect(self.on_tap)
         
+        # Copy song info button
+        self.copy_btn = QPushButton("\u2398")  # ⎘ copy symbol
+        self.copy_btn.setFixedSize(20, 20)
+        self.copy_btn.setToolTip("Copy song title and artist to clipboard")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #aaa;
+                font-size: 12px;
+                border-radius: 4px;
+                border: 1px solid #555;
+            }
+            QPushButton:hover { background-color: #4a4a4a; color: white; }
+            QPushButton:pressed { background-color: #2a2a2a; }
+        """)
+        self.copy_btn.clicked.connect(self._copy_song_info)
+        
         bpm_layout.addWidget(self.scrub_label)
         bpm_layout.addWidget(self.tap_btn)
+        bpm_layout.addWidget(self.copy_btn)
         scrub_section.addLayout(bpm_layout)
         
         # Scrub slider
@@ -907,6 +926,39 @@ class Music(AudioModule):
         min_val = self.cue_spinbox.minimum() if hasattr(self, 'cue_spinbox') else -300.0
         new_val = max(min_val, min(0.0, new_val))
         self.cue_spinbox.setValue(new_val)
+    
+    def _copy_song_info(self):
+        """Copy song title and artist to clipboard."""
+        if self.selected_index is None or not self.playlist_widget:
+            return
+        
+        metadata = self.playlist_widget.get_song_metadata(self.selected_index)
+        if not metadata:
+            return
+        
+        title = metadata.get('title', '')
+        artist = metadata.get('artist', '')
+        filename = metadata.get('filename', '')
+        
+        # Check if we have valid title/artist (not default values)
+        if title and artist and title != 'Unknown' and artist != 'Unknown':
+            text = f"{title} - {artist}"
+        elif title and title != 'Unknown':
+            text = title
+        else:
+            # Fall back to filename, clean it up
+            text = filename
+            # Remove file extension
+            text = os.path.splitext(text)[0]
+            # Remove leading numbers (e.g., "01 - ", "01. ", "1-", "01_")
+            text = re.sub(r'^[\d]+[\s\-_.]*', '', text)
+            # Clean up any remaining leading/trailing whitespace or dashes
+            text = text.strip(' -_.')
+        
+        # Copy to clipboard
+        clipboard = QApplication.clipboard()
+        if clipboard and text:
+            clipboard.setText(text)
 
     def cleanup(self):
         # Stop timers first to prevent callbacks after widget deletion
