@@ -19,9 +19,9 @@ from mutagen.mp4 import MP4, MP4Cover
 from mutagen.flac import FLAC, Picture
 
 # Import custom widgets
-from modules.music.cue_waveform_visualizer import CueWaveformVisualizer
-from modules.music.record import Record
-from modules.music.playlist import Playlist
+from modules.source.music.cue_waveform_visualizer import CueWaveformVisualizer
+from modules.source.music.record import Record
+from modules.source.music.playlist import Playlist
 
 AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
 

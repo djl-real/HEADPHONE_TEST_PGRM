@@ -1,54 +1,50 @@
-# toolbar_manager.py
-from PyQt6.QtWidgets import QToolBar, QMenu, QToolButton, QFileDialog
-from PyQt6.QtGui import QAction
-from PyQt6.QtCore import QPointF, QSize
-from modules.bandpass import Bandpass
-from modules.endpoint import Endpoint
-from modules.wave import Wave
-from modules.static import Static
-from modules.pan import Pan
-from modules.music.music import Music
-from modules.soundboard import Soundboard
-from modules.crossfade import Crossfade
-from modules.hold import Hold
-from modules.tts import TTS
-from modules.reverb import Reverb
-from modules.bitcrusher import Bitcrusher
-from modules.sum import Sum
-from modules.split import Split
-from modules.morse import Morse
-from modules.reversedelay import ReverseDelay
-from modules.samplehold import SampleHoldMod
-from modules.multiply import Multiply
-from modules.convolve import Convolve
-from modules.slowdown import Slowdown
-from modules.formant import Formant
-from modules.vocoder import Vocoder
-from modules.microphone import Microphone
-from modules.const import Const
-from modules.clip import Clip
-from modules.note import Note
-from modules.normalize import Normalize
+# toolbar_manager_autodiscover.py
+"""
+Alternative Toolbar Manager with automatic module discovery.
 
-from modules.pantest import PanTest
+This version scans the modules directory automatically instead of 
+requiring manual imports. Use this when you want new modules to 
+appear automatically just by adding .py files to the modules folder.
+
+Usage:
+    Replace 'from toolbar_manager import ToolbarManager' with
+    'from toolbar_manager_autodiscover import ToolbarManager'
+"""
+
+from PyQt6.QtWidgets import (
+    QToolBar, QMenu, QToolButton, QFileDialog
+)
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import QSize
+
+from module_scanner import ModuleScanner, ManualModuleRegistry
+from module_browser import ModuleBrowser
+from usage_tracker import UsageTracker
 
 
 class ToolbarManager:
     """
-    Handles creation of toolbar with folder grouping, file actions, and module spawning logic.
+    Toolbar Manager with automatic module discovery.
+    
+    Scans the 'modules' directory recursively and automatically
+    registers any AudioModule subclasses found. Hidden directories
+    (starting with '.') are skipped.
     """
 
-    def __init__(self, main_window):
+    def __init__(self, main_window, modules_dir: str = "modules"):
         self.main_window = main_window
+        self.modules_dir = modules_dir
         self.toolbar = QToolBar("Modules")
         self.main_window.addToolBar(self.toolbar)
 
-        # ✅ Touchscreen-friendly scaling
+        # Touchscreen-friendly scaling
         self.toolbar.setIconSize(QSize(48, 48))
         self.toolbar.setStyleSheet("""
             QToolBar {
                 spacing: 12px;
                 padding: 8px;
+                background-color: rgba(30, 30, 35, 0.95);
+                border-bottom: 1px solid rgba(60, 60, 65, 0.8);
             }
             QToolButton {
                 min-width: 60px;
@@ -56,70 +52,103 @@ class ToolbarManager:
                 font-size: 16px;
                 padding: 10px 16px;
                 border-radius: 10px;
+                background-color: rgba(50, 50, 55, 0.9);
+                color: #e0e0e0;
+                border: 1px solid rgba(70, 70, 75, 0.6);
             }
             QToolButton:hover {
-                background-color: rgba(255, 255, 255, 0.1);
+                background-color: rgba(70, 70, 75, 0.95);
+                border-color: rgba(100, 100, 105, 0.8);
+            }
+            QToolButton:pressed {
+                background-color: rgba(40, 40, 45, 0.95);
             }
         """)
 
-        # Create file menu first
-        self.create_file_menu()
+        # Initialize module registry via auto-discovery
+        self._init_module_registry()
+        
+        # Initialize usage tracker
+        self.usage_tracker = UsageTracker()
+        
+        # Create module browser
+        self.module_browser = ModuleBrowser()
+        self.module_browser.set_registry(self.module_registry)
+        self.module_browser.set_usage_tracker(self.usage_tracker)
+        self.module_browser.moduleSpawned.connect(self._on_module_spawned)
 
-        # Organize modules by folder
-        self.module_folders = {
-            "Source": [
-                ("Music", Music),
-                ("Wave", Wave),
-                ("Static", Static),
-                ("Soundboard", Soundboard),
-                ("TTS", TTS),
-                ("Microphone", Microphone)
-            ],
-            "Effects": [
-                ("Pan", Pan),
-                ("Hold", Hold),
-                ("Slowdown", Slowdown),
-                ("Clip", Clip),
-                ("Bitcrusher", Bitcrusher),
-                ("Reverb", Reverb),
-                ("Bandpass", Bandpass),
-                ("Morse", Morse),
-                ("ReverseDelay", ReverseDelay),
-                ("SampleHoldMod", SampleHoldMod),
-                ("Multiply", Multiply),
-                ("Convolve", Convolve),
-                ("Formant", Formant),
-                ("Vocoder", Vocoder),
-                ("Normalize", Normalize)
-            ],
-            "Routing": [
-                ("Endpoint", Endpoint),
-                ("Crossfade", Crossfade),
-                ("Sum", Sum),
-                ("Split", Split)
-            ],
-            "Other": [
-                ("Note", Note),
-                ("Const", Const),
-                ("PanTest", PanTest)
-            ],
-        }
+        # Create toolbar elements
+        self._create_file_menu()
+        self._create_modules_button()
+        self._create_refresh_button()
 
-        self.create_folder_buttons()
+    def _init_module_registry(self):
+        """Initialize module registry by scanning the modules directory."""
+        self.module_scanner = ModuleScanner(self.modules_dir)
+        
+        # Perform initial scan
+        discovered = self.module_scanner.scan()
+        
+        # Convert to ManualModuleRegistry for browser compatibility
+        self.module_registry = ManualModuleRegistry()
+        
+        for name, info in discovered.items():
+            self.module_registry.register(
+                name=info.name,
+                cls=info.class_ref,
+                category=info.category
+            )
+            
+        print(f"Auto-discovered {len(discovered)} modules in {len(self.module_scanner.get_categories())} categories")
 
-    def create_file_menu(self):
-        """Adds the File dropdown with Save and Load layout options."""
+    def refresh_modules(self):
+        """Rescan the modules directory for new modules."""
+        self.module_scanner.scan(force=True)
+        self._init_module_registry()
+        
+        # Update browser
+        self.module_browser.set_registry(self.module_registry)
+        self.module_browser.set_usage_tracker(self.usage_tracker)
+        
+        print("Module registry refreshed")
+
+    def _create_file_menu(self):
+        """Create the File dropdown menu."""
         file_menu = QMenu()
+        file_menu.setStyleSheet("""
+            QMenu {
+                background-color: rgba(40, 40, 45, 0.98);
+                border: 1px solid rgba(70, 70, 75, 0.8);
+                border-radius: 10px;
+                padding: 8px 4px;
+            }
+            QMenu::item {
+                padding: 10px 20px;
+                color: #e0e0e0;
+                border-radius: 6px;
+                margin: 2px 4px;
+            }
+            QMenu::item:selected {
+                background-color: rgba(80, 80, 85, 0.9);
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: rgba(80, 80, 85, 0.5);
+                margin: 6px 12px;
+            }
+        """)
 
-        save_action = QAction("Save Layout", self.main_window)
+        save_action = QAction("💾  Save Layout", self.main_window)
         save_action.triggered.connect(self.save_layout)
         file_menu.addAction(save_action)
 
-        load_action = QAction("Load Layout", self.main_window)
+        load_action = QAction("📂  Load Layout", self.main_window)
         load_action.triggered.connect(self.load_layout)
         file_menu.addAction(load_action)
 
-        add_action = QAction("Add Layout", self.main_window)
+        file_menu.addSeparator()
+
+        add_action = QAction("➕  Add Layout", self.main_window)
         add_action.triggered.connect(self.add_layout)
         file_menu.addAction(add_action)
 
@@ -127,41 +156,69 @@ class ToolbarManager:
         button.setText("File")
         button.setMenu(file_menu)
         button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        button.setStyleSheet("""
-            QToolButton::menu-indicator {
-                width: 16px;
-                height: 16px;
-            }
-            QMenu {
-                font-size: 15px;
-                padding: 8px;
-            }
-            QMenu::item {
-                padding: 5px 10px;
-            }
-            QMenu::item:selected {
-                background-color: rgba(100, 100, 100, 0.3);
-            }
-        """)
         self.toolbar.addWidget(button)
 
-    def spawn_module(self, name: str):
-        """Creates the backend module and adds its graphical ModuleItem to the scene, centered in the current view."""
-        cls = None
-        for folder_modules in self.module_folders.values():
-            for n, c in folder_modules:
-                if n == name:
-                    cls = c
-                    break
-            if cls:
-                break
+    def _create_modules_button(self):
+        """Create the Modules button that opens the browser."""
+        self.modules_button = QToolButton()
+        self.modules_button.setText("➕ Modules")
+        self.modules_button.setStyleSheet("""
+            QToolButton {
+                min-width: 100px;
+                background-color: rgba(60, 90, 140, 0.9);
+                border: 1px solid rgba(80, 110, 160, 0.8);
+            }
+            QToolButton:hover {
+                background-color: rgba(70, 100, 150, 0.95);
+                border-color: rgba(100, 130, 180, 0.9);
+            }
+            QToolButton:pressed {
+                background-color: rgba(50, 80, 130, 0.95);
+            }
+        """)
+        self.modules_button.clicked.connect(self._show_module_browser)
+        self.toolbar.addWidget(self.modules_button)
 
-        if cls is None:
+    def _create_refresh_button(self):
+        """Create a refresh button to rescan modules."""
+        self.refresh_button = QToolButton()
+        self.refresh_button.setText("🔄")
+        self.refresh_button.setToolTip("Refresh module list")
+        self.refresh_button.setStyleSheet("""
+            QToolButton {
+                min-width: 40px;
+                background-color: rgba(50, 50, 55, 0.7);
+            }
+        """)
+        self.refresh_button.clicked.connect(self.refresh_modules)
+        self.toolbar.addWidget(self.refresh_button)
+
+    def _show_module_browser(self):
+        """Show the module browser popup below the modules button."""
+        self.module_browser.show_below(self.modules_button)
+
+    def _on_module_spawned(self, module_name: str):
+        """Handle module spawn from the browser."""
+        self.spawn_module(module_name)
+
+    def spawn_module(self, name: str):
+        """
+        Creates the backend module and adds its graphical ModuleItem to the scene.
+        
+        Args:
+            name: The display name of the module to spawn
+        """
+        module_info = self.module_registry.get_module(name)
+        
+        if module_info is None:
             print(f"Unknown module: {name}")
             return
 
-        module = cls()
-        self.main_window.spawn_module(module)
+        try:
+            module = module_info.spawn()
+            self.main_window.spawn_module(module)
+        except Exception as e:
+            print(f"Failed to spawn module '{name}': {e}")
 
     def save_layout(self):
         """Opens file dialog and delegates saving to the main window."""
@@ -188,44 +245,12 @@ class ToolbarManager:
             self.main_window.load_layout(file_path)
 
     def add_layout(self):
-        """Opens file dialog and delegates loading to the main window."""
+        """Opens file dialog and adds layout to current scene."""
         file_path, _ = QFileDialog.getOpenFileName(
             self.main_window,
-            "Load Layout",
+            "Add Layout",
             "./layouts",
             "Layout Files (*.layout)"
         )
         if file_path:
             self.main_window.add_layout(file_path)
-
-    def create_folder_buttons(self):
-        """Creates a toolbar button for each folder with a dropdown menu of modules."""
-        for folder_name, modules in self.module_folders.items():
-            menu = QMenu()
-            for name, cls in modules:
-                action = QAction(name, self.main_window)
-                action.triggered.connect(lambda checked, n=name: self.spawn_module(n))
-                menu.addAction(action)
-
-            button = QToolButton()
-            button.setText(folder_name)
-            button.setMenu(menu)
-            button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-            button.setStyleSheet("""
-                QToolButton::menu-indicator {
-                    width: 16px;
-                    height: 16px;
-                }
-                QMenu {
-                    font-size: 15px;
-                    padding: 8px;
-                }
-                QMenu::item {
-                    padding: 5px 10px;
-                }
-                QMenu::item:selected {
-                    background-color: rgba(100, 100, 100, 0.3);
-                }
-            """)
-            self.toolbar.addWidget(button)
-
