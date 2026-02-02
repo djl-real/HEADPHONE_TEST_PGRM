@@ -12,13 +12,13 @@ Usage:
 """
 
 from PyQt6.QtWidgets import (
-    QToolBar, QMenu, QToolButton, QFileDialog
+    QToolBar, QToolButton, QFileDialog
 )
-from PyQt6.QtGui import QAction
 from PyQt6.QtCore import QSize
 
 from module_scanner import ModuleScanner, ManualModuleRegistry
 from module_browser import ModuleBrowser
+from layout_browser import LayoutBrowser
 from usage_tracker import UsageTracker
 
 
@@ -76,9 +76,15 @@ class ToolbarManager:
         self.module_browser.set_registry(self.module_registry)
         self.module_browser.set_usage_tracker(self.usage_tracker)
         self.module_browser.moduleSpawned.connect(self._on_module_spawned)
+        
+        # Create layout browser
+        self.layout_browser = LayoutBrowser(layouts_dir="./layouts")
+        self.layout_browser.layoutLoaded.connect(self._on_layout_loaded)
+        self.layout_browser.layoutAdded.connect(self._on_layout_added)
+        self.layout_browser.saveRequested.connect(self._on_save_requested)
 
         # Create toolbar elements
-        self._create_file_menu()
+        self._create_layouts_button()
         self._create_modules_button()
 
     def _init_module_registry(self):
@@ -91,12 +97,21 @@ class ToolbarManager:
         # Convert to ManualModuleRegistry for browser compatibility
         self.module_registry = ManualModuleRegistry()
         
+        # Also build module_folders dict for backward compatibility with main_window
+        self.module_folders = {}
+        
         for name, info in discovered.items():
             self.module_registry.register(
                 name=info.name,
                 cls=info.class_ref,
                 category=info.category
             )
+            
+            # Add to module_folders for backward compatibility
+            category = info.category
+            if category not in self.module_folders:
+                self.module_folders[category] = []
+            self.module_folders[category].append((info.name, info.class_ref))
             
         print(f"Auto-discovered {len(discovered)} modules in {len(self.module_scanner.get_categories())} categories")
 
@@ -111,51 +126,12 @@ class ToolbarManager:
         
         print("Module registry refreshed")
 
-    def _create_file_menu(self):
-        """Create the File dropdown menu."""
-        file_menu = QMenu()
-        file_menu.setStyleSheet("""
-            QMenu {
-                background-color: rgba(40, 40, 45, 0.98);
-                border: 1px solid rgba(70, 70, 75, 0.8);
-                border-radius: 10px;
-                padding: 8px 4px;
-            }
-            QMenu::item {
-                padding: 10px 20px;
-                color: #e0e0e0;
-                border-radius: 6px;
-                margin: 2px 4px;
-            }
-            QMenu::item:selected {
-                background-color: rgba(80, 80, 85, 0.9);
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: rgba(80, 80, 85, 0.5);
-                margin: 6px 12px;
-            }
-        """)
-
-        save_action = QAction("Save Layout", self.main_window)
-        save_action.triggered.connect(self.save_layout)
-        file_menu.addAction(save_action)
-
-        load_action = QAction("Load Layout", self.main_window)
-        load_action.triggered.connect(self.load_layout)
-        file_menu.addAction(load_action)
-
-        file_menu.addSeparator()
-
-        add_action = QAction("Add Layout", self.main_window)
-        add_action.triggered.connect(self.add_layout)
-        file_menu.addAction(add_action)
-
-        button = QToolButton()
-        button.setText("File")
-        button.setMenu(file_menu)
-        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.toolbar.addWidget(button)
+    def _create_layouts_button(self):
+        """Create the Layouts button that opens the layout browser."""
+        self.layouts_button = QToolButton()
+        self.layouts_button.setText("Layouts")
+        self.layouts_button.clicked.connect(self._show_layout_browser)
+        self.toolbar.addWidget(self.layouts_button)
 
     def _create_modules_button(self):
         """Create the Modules button that opens the browser."""
@@ -168,9 +144,34 @@ class ToolbarManager:
         """Show the module browser popup below the modules button."""
         self.module_browser.show_below(self.modules_button)
 
+    def _show_layout_browser(self):
+        """Show the layout browser popup below the layouts button."""
+        self.layout_browser.show_below(self.layouts_button)
+
     def _on_module_spawned(self, module_name: str):
         """Handle module spawn from the browser."""
         self.spawn_module(module_name)
+
+    def _on_layout_loaded(self, file_path: str):
+        """Handle layout load from the browser."""
+        self.main_window.load_layout(file_path)
+
+    def _on_layout_added(self, file_path: str):
+        """Handle layout add from the browser."""
+        self.main_window.add_layout(file_path)
+
+    def _on_save_requested(self):
+        """Handle save request from the browser."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self.main_window,
+            "Save Layout",
+            "./layouts",
+            "Layout Files (*.layout)"
+        )
+        if file_path:
+            if not file_path.endswith(".layout"):
+                file_path += ".layout"
+            self.main_window.save_layout(file_path)
 
     def spawn_module(self, name: str):
         """
@@ -203,25 +204,3 @@ class ToolbarManager:
             if not file_path.endswith(".layout"):
                 file_path += ".layout"
             self.main_window.save_layout(file_path)
-
-    def load_layout(self):
-        """Opens file dialog and delegates loading to the main window."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.main_window,
-            "Load Layout",
-            "./layouts",
-            "Layout Files (*.layout)"
-        )
-        if file_path:
-            self.main_window.load_layout(file_path)
-
-    def add_layout(self):
-        """Opens file dialog and adds layout to current scene."""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.main_window,
-            "Add Layout",
-            "./layouts",
-            "Layout Files (*.layout)"
-        )
-        if file_path:
-            self.main_window.add_layout(file_path)
