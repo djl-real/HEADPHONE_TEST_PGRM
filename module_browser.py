@@ -51,18 +51,18 @@ class ModuleButton(QPushButton):
         """Apply visual styling based on state."""
         if self._compact:
             # Compact style for quick access bar
-            padding = "8px 12px"
-            font_size = "13px"
-            min_height = "32px"
-            border_radius = "8px"
+            padding = "5px 10px"
+            font_size = "12px"
+            min_height = "24px"
+            border_radius = "6px"
         else:
-            # Full style for category lists
-            padding = "10px 16px"
-            font_size = "14px"
-            min_height = "38px"
-            border_radius = "10px"
+            # Compact style for category lists
+            padding = "6px 12px"
+            font_size = "12px"
+            min_height = "26px"
+            border_radius = "6px"
         
-        favorite_indicator = "⭐ " if self._is_favorite else ""
+        favorite_indicator = "[*] " if self._is_favorite else ""
         if self._is_favorite and not self._compact:
             self.setText(f"{favorite_indicator}{self.module_info.name}")
         else:
@@ -106,7 +106,7 @@ class ModuleButton(QPushButton):
 
 class QuickAccessBar(QWidget):
     """
-    Horizontal bar showing frequently used/favorited modules.
+    Widget showing favorites and recent history as separate sections.
     """
     
     moduleClicked = pyqtSignal(str)  # module_name
@@ -114,59 +114,117 @@ class QuickAccessBar(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._layout = QHBoxLayout(self)
+        self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(8)
+        self._layout.setSpacing(6)
         
         self._buttons: Dict[str, ModuleButton] = {}
         self._module_registry = None
         
-        # Placeholder when empty
-        self._placeholder = QLabel("No recent modules")
-        self._placeholder.setStyleSheet("""
+        # Favorites section
+        self._favorites_label = QLabel("Favorites")
+        self._favorites_label.setStyleSheet("""
             QLabel {
-                color: rgba(150, 150, 155, 0.7);
-                font-size: 13px;
-                font-style: italic;
-                padding: 8px;
+                color: rgba(180, 180, 185, 0.8);
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
             }
         """)
-        self._layout.addWidget(self._placeholder)
-        self._layout.addStretch()
+        self._layout.addWidget(self._favorites_label)
+        
+        self._favorites_container = QWidget()
+        self._favorites_layout = QHBoxLayout(self._favorites_container)
+        self._favorites_layout.setContentsMargins(0, 0, 0, 0)
+        self._favorites_layout.setSpacing(4)
+        self._favorites_layout.addStretch()
+        self._layout.addWidget(self._favorites_container)
+        
+        self._favorites_placeholder = QLabel("No favorites yet")
+        self._favorites_placeholder.setStyleSheet("""
+            QLabel {
+                color: rgba(120, 120, 125, 0.6);
+                font-size: 11px;
+                font-style: italic;
+                padding: 2px 0;
+            }
+        """)
+        self._favorites_layout.insertWidget(0, self._favorites_placeholder)
+        
+        # History section
+        self._history_label = QLabel("Recent")
+        self._history_label.setStyleSheet("""
+            QLabel {
+                color: rgba(180, 180, 185, 0.8);
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+            }
+        """)
+        self._layout.addWidget(self._history_label)
+        
+        self._history_container = QWidget()
+        self._history_layout = QHBoxLayout(self._history_container)
+        self._history_layout.setContentsMargins(0, 0, 0, 0)
+        self._history_layout.setSpacing(4)
+        self._history_layout.addStretch()
+        self._layout.addWidget(self._history_container)
+        
+        self._history_placeholder = QLabel("No recent modules")
+        self._history_placeholder.setStyleSheet("""
+            QLabel {
+                color: rgba(120, 120, 125, 0.6);
+                font-size: 11px;
+                font-style: italic;
+                padding: 2px 0;
+            }
+        """)
+        self._history_layout.insertWidget(0, self._history_placeholder)
         
     def set_registry(self, registry):
         """Set the module registry for lookups."""
         self._module_registry = registry
         
-    def update_modules(self, module_names: List[str], favorites: List[str]):
+    def update_modules(self, favorites: List[str], history: List[str]):
         """
-        Update the quick access bar with new modules.
+        Update the quick access sections.
         
         Args:
-            module_names: List of module names to show
             favorites: List of favorited module names
+            history: List of recently used module names (excluding favorites)
         """
-        # Clear existing
+        # Clear existing buttons
         for btn in self._buttons.values():
             btn.deleteLater()
         self._buttons.clear()
         
-        # Hide placeholder if we have modules
-        self._placeholder.setVisible(len(module_names) == 0)
-        
         if not self._module_registry:
             return
-            
-        for name in module_names:
+        
+        # Update favorites section
+        self._favorites_placeholder.setVisible(len(favorites) == 0)
+        for name in favorites:
             info = self._module_registry.get_module(name)
             if info:
-                is_fav = name in favorites
-                btn = ModuleButton(info, is_favorite=is_fav, compact=True)
+                btn = ModuleButton(info, is_favorite=True, compact=True)
                 btn.clicked.connect(lambda checked, n=name: self.moduleClicked.emit(n))
                 btn.favoriteToggled.connect(self.favoriteToggled.emit)
-                self._buttons[name] = btn
-                # Insert before stretch
-                self._layout.insertWidget(self._layout.count() - 1, btn)
+                self._buttons[f"fav_{name}"] = btn
+                self._favorites_layout.insertWidget(self._favorites_layout.count() - 1, btn)
+        
+        # Update history section (exclude favorites)
+        history_filtered = [h for h in history if h not in favorites][:6]
+        self._history_placeholder.setVisible(len(history_filtered) == 0)
+        for name in history_filtered:
+            info = self._module_registry.get_module(name)
+            if info:
+                btn = ModuleButton(info, is_favorite=False, compact=True)
+                btn.clicked.connect(lambda checked, n=name: self.moduleClicked.emit(n))
+                btn.favoriteToggled.connect(self.favoriteToggled.emit)
+                self._buttons[f"hist_{name}"] = btn
+                self._history_layout.insertWidget(self._history_layout.count() - 1, btn)
 
 
 class CategorySection(QWidget):
@@ -183,26 +241,26 @@ class CategorySection(QWidget):
         self._category_name = category_name
         self._modules = modules
         self._favorites = favorites
-        self._expanded = True
+        self._expanded = False  # Start collapsed
         self._buttons: List[ModuleButton] = []
         
         self._setup_ui()
         
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 8)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 4)
+        layout.setSpacing(2)
         
-        # Header button (click to expand/collapse)
-        self._header = QPushButton(f"▼  {self._category_name}")
+        # Header button (click to expand/collapse) - starts with collapsed arrow
+        self._header = QPushButton(f">  {self._category_name}")
         self._header.setStyleSheet("""
             QPushButton {
                 background-color: transparent;
                 color: #b0b0b5;
                 border: none;
-                border-radius: 6px;
-                padding: 8px 12px;
-                font-size: 13px;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 12px;
                 font-weight: 600;
                 text-align: left;
                 text-transform: uppercase;
@@ -217,11 +275,12 @@ class CategorySection(QWidget):
         self._header.clicked.connect(self._toggle_expanded)
         layout.addWidget(self._header)
         
-        # Content container
+        # Content container - starts hidden
         self._content = QWidget()
+        self._content.setVisible(False)  # Start collapsed
         content_layout = QVBoxLayout(self._content)
-        content_layout.setContentsMargins(8, 0, 0, 0)
-        content_layout.setSpacing(4)
+        content_layout.setContentsMargins(6, 0, 0, 0)
+        content_layout.setSpacing(2)
         
         # Sort modules: favorites first, then alphabetical
         sorted_modules = sorted(
@@ -251,7 +310,7 @@ class CategorySection(QWidget):
         """Toggle the expanded/collapsed state."""
         self._expanded = not self._expanded
         self._content.setVisible(self._expanded)
-        arrow = "▼" if self._expanded else "▶"
+        arrow = "v" if self._expanded else ">"
         self._header.setText(f"{arrow}  {self._category_name}")
         
     def update_favorites(self, favorites: List[str]):
@@ -301,8 +360,8 @@ class ModuleBrowser(QWidget):
     closed = pyqtSignal()
     
     # Size constants
-    PANEL_WIDTH = 320
-    PANEL_MAX_HEIGHT = 500
+    PANEL_WIDTH = 400
+    PANEL_MAX_HEIGHT = 650
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -328,39 +387,26 @@ class ModuleBrowser(QWidget):
             #browserContainer {
                 background-color: rgba(35, 35, 40, 0.98);
                 border: 1px solid rgba(80, 80, 85, 0.8);
-                border-radius: 16px;
+                border-radius: 12px;
             }
         """)
         
         container_layout = QVBoxLayout(self._container)
-        container_layout.setContentsMargins(16, 16, 16, 16)
-        container_layout.setSpacing(12)
+        container_layout.setContentsMargins(12, 10, 12, 10)
+        container_layout.setSpacing(6)
         
         # Title
         title = QLabel("Modules")
         title.setStyleSheet("""
             QLabel {
                 color: #ffffff;
-                font-size: 18px;
+                font-size: 14px;
                 font-weight: 600;
-                padding-bottom: 4px;
             }
         """)
         container_layout.addWidget(title)
         
-        # Quick access section
-        quick_label = QLabel("Quick Access")
-        quick_label.setStyleSheet("""
-            QLabel {
-                color: rgba(180, 180, 185, 0.8);
-                font-size: 11px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-            }
-        """)
-        container_layout.addWidget(quick_label)
-        
+        # Quick access section (favorites + history)
         self._quick_access = QuickAccessBar()
         self._quick_access.moduleClicked.connect(self._on_module_clicked)
         self._quick_access.favoriteToggled.connect(self._on_favorite_toggled)
@@ -375,16 +421,16 @@ class ModuleBrowser(QWidget):
         
         # Search input
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("🔍  Search modules...")
+        self._search_input.setPlaceholderText("Search modules...")
         self._search_input.textChanged.connect(self._on_search_changed)
         self._search_input.setStyleSheet("""
             QLineEdit {
                 background-color: rgba(50, 50, 55, 0.9);
                 color: #e0e0e0;
                 border: 1px solid rgba(80, 80, 85, 0.6);
-                border-radius: 10px;
-                padding: 10px 14px;
-                font-size: 14px;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 12px;
             }
             QLineEdit:focus {
                 border-color: rgba(120, 120, 130, 0.8);
@@ -395,6 +441,20 @@ class ModuleBrowser(QWidget):
             }
         """)
         container_layout.addWidget(self._search_input)
+        
+        # Categories label
+        categories_label = QLabel("Categories")
+        categories_label.setStyleSheet("""
+            QLabel {
+                color: rgba(180, 180, 185, 0.8);
+                font-size: 10px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+                padding-top: 2px;
+            }
+        """)
+        container_layout.addWidget(categories_label)
         
         # Scrollable category area
         scroll = QScrollArea()
@@ -427,31 +487,19 @@ class ModuleBrowser(QWidget):
         self._categories_widget = QWidget()
         self._categories_layout = QVBoxLayout(self._categories_widget)
         self._categories_layout.setContentsMargins(0, 0, 0, 0)
-        self._categories_layout.setSpacing(4)
+        self._categories_layout.setSpacing(2)
         self._categories_layout.addStretch()
         
         scroll.setWidget(self._categories_widget)
         container_layout.addWidget(scroll, 1)
         
-        # Hint text
-        hint = QLabel("Right-click modules to add to favorites")
-        hint.setStyleSheet("""
-            QLabel {
-                color: rgba(140, 140, 145, 0.6);
-                font-size: 11px;
-                font-style: italic;
-                padding-top: 4px;
-            }
-        """)
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        container_layout.addWidget(hint)
-        
         # Main layout
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(8, 8, 8, 8)  # Shadow margin
+        main_layout.setContentsMargins(4, 4, 4, 4)  # Shadow margin
         main_layout.addWidget(self._container)
         
-        self.setFixedWidth(self.PANEL_WIDTH + 16)
+        self.setFixedWidth(self.PANEL_WIDTH + 8)
+        self.setFixedHeight(self.PANEL_MAX_HEIGHT + 8)
         
     def _apply_shadow(self):
         """Add drop shadow effect to the panel."""
@@ -505,13 +553,13 @@ class ModuleBrowser(QWidget):
         return []
     
     def _update_quick_access(self):
-        """Update the quick access bar."""
+        """Update the quick access bar with favorites and history."""
         if not self._usage_tracker or not self._module_registry:
             return
             
-        quick_modules = self._usage_tracker.get_quick_access_modules()
         favorites = self._get_favorites()
-        self._quick_access.update_modules(quick_modules, favorites)
+        history = self._usage_tracker.get_recently_used(max_count=10)
+        self._quick_access.update_modules(favorites, history)
         
     def _update_favorites(self):
         """Update favorite indicators in all sections."""
@@ -545,11 +593,8 @@ class ModuleBrowser(QWidget):
         if screen:
             screen_rect = screen.availableGeometry()
             
-            # Calculate panel size
-            self.adjustSize()
             panel_width = self.width()
-            panel_height = min(self.sizeHint().height(), self.PANEL_MAX_HEIGHT + 16)
-            self.setFixedHeight(panel_height)
+            panel_height = self.height()
             
             # Adjust X position
             x = global_pos.x()

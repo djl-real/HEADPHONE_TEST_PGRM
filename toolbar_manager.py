@@ -37,31 +37,31 @@ class ToolbarManager:
         self.toolbar = QToolBar("Modules")
         self.main_window.addToolBar(self.toolbar)
 
-        # Touchscreen-friendly scaling
-        self.toolbar.setIconSize(QSize(48, 48))
+        # Slim toolbar styling
+        self.toolbar.setIconSize(QSize(16, 16))
         self.toolbar.setStyleSheet("""
             QToolBar {
-                spacing: 12px;
-                padding: 8px;
-                background-color: rgba(30, 30, 35, 0.95);
-                border-bottom: 1px solid rgba(60, 60, 65, 0.8);
+                spacing: 4px;
+                padding: 2px 4px;
+                background-color: rgba(35, 35, 40, 0.98);
+                border-bottom: 1px solid rgba(60, 60, 65, 0.6);
             }
             QToolButton {
-                min-width: 60px;
-                min-height: 30px;
-                font-size: 16px;
-                padding: 10px 16px;
-                border-radius: 10px;
-                background-color: rgba(50, 50, 55, 0.9);
-                color: #e0e0e0;
-                border: 1px solid rgba(70, 70, 75, 0.6);
+                min-width: 50px;
+                min-height: 22px;
+                font-size: 13px;
+                padding: 4px 10px;
+                border-radius: 4px;
+                background-color: transparent;
+                color: #d0d0d0;
+                border: 1px solid transparent;
             }
             QToolButton:hover {
-                background-color: rgba(70, 70, 75, 0.95);
-                border-color: rgba(100, 100, 105, 0.8);
+                background-color: rgba(70, 70, 75, 0.7);
+                border-color: rgba(90, 90, 95, 0.5);
             }
             QToolButton:pressed {
-                background-color: rgba(40, 40, 45, 0.95);
+                background-color: rgba(50, 50, 55, 0.9);
             }
         """)
 
@@ -80,7 +80,6 @@ class ToolbarManager:
         # Create toolbar elements
         self._create_file_menu()
         self._create_modules_button()
-        self._create_refresh_button()
 
     def _init_module_registry(self):
         """Initialize module registry by scanning the modules directory."""
@@ -138,17 +137,17 @@ class ToolbarManager:
             }
         """)
 
-        save_action = QAction("💾  Save Layout", self.main_window)
+        save_action = QAction("Save Layout", self.main_window)
         save_action.triggered.connect(self.save_layout)
         file_menu.addAction(save_action)
 
-        load_action = QAction("📂  Load Layout", self.main_window)
+        load_action = QAction("Load Layout", self.main_window)
         load_action.triggered.connect(self.load_layout)
         file_menu.addAction(load_action)
 
         file_menu.addSeparator()
 
-        add_action = QAction("➕  Add Layout", self.main_window)
+        add_action = QAction("Add Layout", self.main_window)
         add_action.triggered.connect(self.add_layout)
         file_menu.addAction(add_action)
 
@@ -161,37 +160,9 @@ class ToolbarManager:
     def _create_modules_button(self):
         """Create the Modules button that opens the browser."""
         self.modules_button = QToolButton()
-        self.modules_button.setText("➕ Modules")
-        self.modules_button.setStyleSheet("""
-            QToolButton {
-                min-width: 100px;
-                background-color: rgba(60, 90, 140, 0.9);
-                border: 1px solid rgba(80, 110, 160, 0.8);
-            }
-            QToolButton:hover {
-                background-color: rgba(70, 100, 150, 0.95);
-                border-color: rgba(100, 130, 180, 0.9);
-            }
-            QToolButton:pressed {
-                background-color: rgba(50, 80, 130, 0.95);
-            }
-        """)
+        self.modules_button.setText("Add Module")
         self.modules_button.clicked.connect(self._show_module_browser)
         self.toolbar.addWidget(self.modules_button)
-
-    def _create_refresh_button(self):
-        """Create a refresh button to rescan modules."""
-        self.refresh_button = QToolButton()
-        self.refresh_button.setText("🔄")
-        self.refresh_button.setToolTip("Refresh module list")
-        self.refresh_button.setStyleSheet("""
-            QToolButton {
-                min-width: 40px;
-                background-color: rgba(50, 50, 55, 0.7);
-            }
-        """)
-        self.refresh_button.clicked.connect(self.refresh_modules)
-        self.toolbar.addWidget(self.refresh_button)
 
     def _show_module_browser(self):
         """Show the module browser popup below the modules button."""
