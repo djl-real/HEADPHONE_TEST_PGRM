@@ -1,15 +1,4 @@
-# toolbar_manager_autodiscover.py
-"""
-Alternative Toolbar Manager with automatic module discovery.
-
-This version scans the modules directory automatically instead of 
-requiring manual imports. Use this when you want new modules to 
-appear automatically just by adding .py files to the modules folder.
-
-Usage:
-    Replace 'from toolbar_manager import ToolbarManager' with
-    'from toolbar_manager_autodiscover import ToolbarManager'
-"""
+# toolbar_manager.py
 
 from PyQt6.QtWidgets import (
     QToolBar, QToolButton, QFileDialog

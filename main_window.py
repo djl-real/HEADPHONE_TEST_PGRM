@@ -825,7 +825,7 @@ class MainWindow(QMainWindow):
         self.scene.addItem(item)
 
         # Register module
-        if isinstance(module, Endpoint):
+        if type(module).__name__ == "Endpoint":
             self.endpoints.append(module)
             self.mixer.add_endpoint(module)
         else:
