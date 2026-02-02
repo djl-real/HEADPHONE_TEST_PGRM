@@ -1,0 +1,16 @@
+Use audacity for effects inspo
+
+
+fix endpoint
+check if all saves work (in menu and box select)
+
+music:
+double click adds to record
+old song plays when playlist changes
+stretch
+
+
+killing timers error
+
+
+convolve childrens choir
