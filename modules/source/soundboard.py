@@ -29,7 +29,7 @@ class Soundboard(AudioModule):
     # ---------------------------
     def load_all_sounds(self):
         """Scan /sounds directory and load all supported audio files."""
-        base_dir = os.path.join(os.path.dirname(__file__), "..", "sounds")
+        base_dir = os.path.join(os.path.dirname(__file__), "../..", "sounds")
         base_dir = os.path.abspath(base_dir)
 
         if not os.path.isdir(base_dir):

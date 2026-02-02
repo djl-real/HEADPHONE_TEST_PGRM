@@ -592,15 +592,47 @@ class Music(AudioModule):
         cue_section_layout.setContentsMargins(0, 0, 0, 0)
         cue_section_layout.setSpacing(2)
         
-        # Cue visualizer
-        self.cue_visualizer = CueWaveformVisualizer()
-        self.cue_visualizer.setMaximumHeight(80)
+        # Cue visualizer (hidden by default)
+        self.cue_visualizer = CueWaveformVisualizer(show_waveform=False)
         cue_section_layout.addWidget(self.cue_visualizer)
 
-        # Cue control row: label + spinbox + fine tune buttons + crossfade
+        # Cue control row: label + spinbox + fine tune buttons + crossfade + waveform toggle
         cue_control_row = QHBoxLayout()
         cue_control_row.setSpacing(2)
         cue_control_row.setContentsMargins(0, 0, 0, 0)
+        
+        # Waveform toggle button
+        self.waveform_toggle_btn = QPushButton("\u223F")  # ∿ wave symbol
+        self.waveform_toggle_btn.setFixedSize(18, 16)
+        self.waveform_toggle_btn.setToolTip("Show/hide waveform visualization")
+        self.waveform_toggle_btn.setCheckable(True)
+        self.waveform_toggle_btn.setChecked(False)
+        self.waveform_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #888;
+                font-size: 10px;
+                border-radius: 2px;
+                border: 1px solid #555;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: #aaa;
+            }
+            QPushButton:checked {
+                background-color: #4a90e2;
+                color: white;
+                border-color: #4a90e2;
+            }
+        """)
+        
+        def toggle_waveform():
+            show = self.waveform_toggle_btn.isChecked()
+            self.cue_visualizer.set_show_waveform(show)
+        
+        self.waveform_toggle_btn.clicked.connect(toggle_waveform)
+        cue_control_row.addWidget(self.waveform_toggle_btn)
         
         cue_label = QLabel("Cue:")
         cue_label.setStyleSheet("color: #FFFF00; font-size: 9px; font-weight: bold;")
@@ -759,12 +791,13 @@ class Music(AudioModule):
         self.cue_section_widget.hide()
         layout.addWidget(self.cue_section_widget)
 
-        # Pitch slider section with reset button
+        # Pitch slider section with reset button and fine-tune buttons
         pitch_section = QVBoxLayout()
         pitch_section.setSpacing(1)
         
         pitch_header = QHBoxLayout()
-        pitch_header.setSpacing(4)
+        pitch_header.setSpacing(2)
+        pitch_header.setContentsMargins(0, 0, 0, 0)
         
         self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
         self.pitch_label.setStyleSheet("color: #aaa; font-size: 10px;")
@@ -772,7 +805,7 @@ class Music(AudioModule):
         
         # Pitch reset button
         self.pitch_reset_btn = QPushButton("1x")
-        self.pitch_reset_btn.setFixedSize(24, 16)
+        self.pitch_reset_btn.setFixedSize(22, 16)
         self.pitch_reset_btn.setToolTip("Reset pitch to 1.00x")
         self.pitch_reset_btn.setStyleSheet("""
             QPushButton {
@@ -780,7 +813,7 @@ class Music(AudioModule):
                 color: #aaa;
                 font-size: 9px;
                 font-weight: bold;
-                border-radius: 3px;
+                border-radius: 2px;
                 border: 1px solid #555;
             }
             QPushButton:hover {
@@ -790,6 +823,36 @@ class Music(AudioModule):
             }
         """)
         pitch_header.addWidget(self.pitch_reset_btn)
+        
+        # Fine tune buttons for pitch
+        def make_pitch_btn(text, delta):
+            btn = QPushButton(text)
+            btn.setFixedSize(22, 16)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a3a3a;
+                    color: #ccc;
+                    font-size: 8px;
+                    border-radius: 2px;
+                    border: 1px solid #555;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #4a4a4a;
+                    color: white;
+                }
+                QPushButton:pressed {
+                    background-color: #2a2a2a;
+                }
+            """)
+            btn.clicked.connect(lambda: self._adjust_pitch(delta))
+            return btn
+        
+        pitch_header.addWidget(make_pitch_btn("-.1", -0.1))
+        pitch_header.addWidget(make_pitch_btn("-.01", -0.01))
+        pitch_header.addWidget(make_pitch_btn("+.01", 0.01))
+        pitch_header.addWidget(make_pitch_btn("+.1", 0.1))
+        
         pitch_header.addStretch()
         
         pitch_section.addLayout(pitch_header)
@@ -926,6 +989,18 @@ class Music(AudioModule):
         min_val = self.cue_spinbox.minimum() if hasattr(self, 'cue_spinbox') else -300.0
         new_val = max(min_val, min(0.0, new_val))
         self.cue_spinbox.setValue(new_val)
+    
+    def _adjust_pitch(self, delta):
+        """Adjust pitch by delta amount."""
+        new_pitch = self.pitch + delta
+        # Clamp to valid range (0.5 to 2.0)
+        new_pitch = max(0.5, min(2.0, new_pitch))
+        # Convert pitch back to slider value: pitch = 0.5 * (4 ** s), so s = log4(pitch / 0.5)
+        import math
+        s = math.log(new_pitch / 0.5) / math.log(4)
+        slider_val = int(s * 100)
+        slider_val = max(0, min(100, slider_val))
+        self.pitch_slider.setValue(slider_val)
     
     def _copy_song_info(self):
         """Copy song title and artist to clipboard."""

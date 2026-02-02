@@ -16,10 +16,10 @@ class CueWaveformVisualizer(QWidget):
     Durations are adjusted by pitch (higher pitch = shorter playback duration).
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, show_waveform=False):
         super().__init__(parent)
-        self.setMinimumHeight(80)
-        self.setMaximumHeight(100)
+        self._show_waveform = show_waveform
+        self._update_size()
 
         self.waveform_a = None
         self.waveform_b = None
@@ -36,6 +36,27 @@ class CueWaveformVisualizer(QWidget):
         self.sample_rate = 44100
         self.pitch_a = 1.0
         self.pitch_b = 1.0
+    
+    def _update_size(self):
+        """Update widget size based on waveform visibility."""
+        if self._show_waveform:
+            self.setMinimumHeight(80)
+            self.setMaximumHeight(100)
+            self.show()
+        else:
+            self.setMinimumHeight(0)
+            self.setMaximumHeight(0)
+            self.hide()
+    
+    def set_show_waveform(self, show):
+        """Show or hide the waveform visualization."""
+        self._show_waveform = show
+        self._update_size()
+        self.update()
+    
+    def is_waveform_visible(self):
+        """Return whether waveform is currently visible."""
+        return self._show_waveform
 
     def set_tracks(self, track_a_data, track_b_data, cue_seconds, sample_rate=44100, pitch_a=1.0, pitch_b=1.0):
         self.sample_rate = sample_rate
