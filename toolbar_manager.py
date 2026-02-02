@@ -28,6 +28,7 @@ from modules.microphone import Microphone
 from modules.const import Const
 from modules.clip import Clip
 from modules.note import Note
+from modules.normalize import Normalize
 
 from modules.pantest import PanTest
 
@@ -88,7 +89,8 @@ class ToolbarManager:
                 ("Multiply", Multiply),
                 ("Convolve", Convolve),
                 ("Formant", Formant),
-                ("Vocoder", Vocoder)
+                ("Vocoder", Vocoder),
+                ("Normalize", Normalize)
             ],
             "Routing": [
                 ("Endpoint", Endpoint),
