@@ -17,10 +17,11 @@ from audio_module import AudioModule
 
 
 class TTS(AudioModule):
-    """Unified Text-to-speech generator module supporting both pyttsx3 (default) and Mycroft Mimic engines."""
+    """Unified Text-to-speech generator module supporting pyttsx3 (default), Mycroft Mimic, and Festival engines."""
 
     ENGINE_DEFAULT = "default"
     ENGINE_MIMIC = "mimic"
+    ENGINE_FESTIVAL = "festival"
 
     def __init__(self, sample_rate=44100, tts_folder="TTS"):
         super().__init__(input_count=0, output_count=1)
@@ -46,6 +47,7 @@ class TTS(AudioModule):
         # Initialize engines
         self._init_default_engine()
         self._init_mimic_engine()
+        self._init_festival_engine()
         self._scan_tts_folder()
 
     # ==========================================================================
@@ -87,6 +89,79 @@ class TTS(AudioModule):
         self.mimic_voice_codes = list(self.mimic_voices.keys())
         self.mimic_voice = "ap"
 
+    def _init_festival_engine(self):
+        """Initialize Festival voices."""
+        self.festival_voices = {}
+        self.festival_voice_codes = []
+        self.festival_voice = None
+        self.festival_available = False
+
+        # Only available on Linux
+        if platform.system().lower() != "linux":
+            return
+
+        try:
+            # Query available voices from Festival
+            result = subprocess.run(
+                ["festival", "--pipe"],
+                input="(voice.list)",
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+
+            if result.returncode == 0:
+                # Parse the voice list from Festival output
+                # Output format is like: (kal_diphone cmu_us_slt_arctic_hts ...)
+                output = result.stdout.strip()
+                # Find the list in parentheses
+                import re
+                match = re.search(r'\(([^)]+)\)', output)
+                if match:
+                    voices = match.group(1).split()
+                    for voice in voices:
+                        voice = voice.strip()
+                        if voice:
+                            # Create friendly names
+                            friendly = voice.replace('_', ' ').title()
+                            self.festival_voices[voice] = friendly
+                    
+                    self.festival_voice_codes = list(self.festival_voices.keys())
+                    if self.festival_voice_codes:
+                        self.festival_voice = self.festival_voice_codes[0]
+                        self.festival_available = True
+
+        except FileNotFoundError:
+            print("[TTS] Festival not found")
+        except subprocess.TimeoutExpired:
+            print("[TTS] Festival voice query timed out")
+        except Exception as e:
+            print(f"[TTS] Festival initialization failed: {e}")
+
+        # Fallback: add common default voices if detection failed but festival exists
+        if not self.festival_voices:
+            try:
+                # Check if festival command exists
+                result = subprocess.run(
+                    ["which", "festival"],
+                    capture_output=True,
+                    timeout=2
+                )
+                if result.returncode == 0:
+                    # Add common default voices
+                    self.festival_voices = {
+                        "kal_diphone": "Kal Diphone (US male)",
+                        "ked_diphone": "Ked Diphone (US male)",
+                        "cmu_us_slt_arctic_hts": "CMU SLT (US female, HTS)",
+                        "cmu_us_awb_arctic_hts": "CMU AWB (Scottish male, HTS)",
+                        "cmu_us_rms_arctic_hts": "CMU RMS (US male, HTS)",
+                    }
+                    self.festival_voice_codes = list(self.festival_voices.keys())
+                    self.festival_voice = "kal_diphone"
+                    self.festival_available = True
+            except:
+                pass
+
     # ==========================================================================
     # Preset File Management
     # ==========================================================================
@@ -119,6 +194,8 @@ class TTS(AudioModule):
 
         if self.current_engine == self.ENGINE_MIMIC:
             self._generate_mimic_audio(text)
+        elif self.current_engine == self.ENGINE_FESTIVAL:
+            self._generate_festival_audio(text)
         else:
             self._generate_default_audio(text)
 
@@ -178,6 +255,59 @@ class TTS(AudioModule):
             print("[TTS] ERROR: mimic command not found")
         except Exception as e:
             print("[TTS] Mimic audio generation error:", e)
+            import traceback
+            traceback.print_exc()
+        finally:
+            try:
+                if os.path.exists(wav_path):
+                    os.remove(wav_path)
+            except:
+                pass
+            gc.collect()
+
+    def _generate_festival_audio(self, text: str):
+        """Generate audio using Festival TTS."""
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmpfile:
+            wav_path = tmpfile.name
+
+        try:
+            # Escape special characters in text for Scheme
+            escaped_text = text.replace('\\', '\\\\').replace('"', '\\"')
+            
+            # Build Festival Scheme script
+            voice_cmd = f'(voice_{self.festival_voice})' if self.festival_voice else ''
+            scheme_script = f'''
+{voice_cmd}
+(set! utt (Utterance Text "{escaped_text}"))
+(utt.synth utt)
+(utt.save.wave utt "{wav_path}")
+'''
+
+            # Run Festival with the script
+            result = subprocess.run(
+                ["festival", "--pipe"],
+                input=scheme_script,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode != 0:
+                print(f"[TTS] Festival error: {result.stderr}")
+                return
+
+            if not os.path.exists(wav_path) or os.path.getsize(wav_path) == 0:
+                print("[TTS] Festival did not produce output file")
+                return
+
+            self._load_and_process_audio(wav_path, apply_speaking_rate=True)
+
+        except subprocess.TimeoutExpired:
+            print("[TTS] Festival command timed out")
+        except FileNotFoundError:
+            print("[TTS] ERROR: festival command not found. Install with: sudo apt install festival")
+        except Exception as e:
+            print("[TTS] Festival audio generation error:", e)
             import traceback
             traceback.print_exc()
         finally:
@@ -321,6 +451,8 @@ class TTS(AudioModule):
         engine_dropdown = QComboBox()
         engine_dropdown.addItem("pyttsx3", self.ENGINE_DEFAULT)
         engine_dropdown.addItem("Mimic", self.ENGINE_MIMIC)
+        if platform.system().lower() == "linux":
+            engine_dropdown.addItem("Festival", self.ENGINE_FESTIVAL)
         engine_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         engine_col.addWidget(engine_label)
         engine_col.addWidget(engine_dropdown)
@@ -345,6 +477,14 @@ class TTS(AudioModule):
         mimic_voice_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         mimic_voice_dropdown.setVisible(False)
 
+        # Festival voice dropdown
+        festival_voice_dropdown = QComboBox()
+        for code in self.festival_voice_codes:
+            voice_name = self.festival_voices.get(code, code)
+            festival_voice_dropdown.addItem(f"{voice_name}", code)
+        festival_voice_dropdown.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        festival_voice_dropdown.setVisible(False)
+
         def on_default_voice_changed(i):
             if 0 <= i < len(self.default_voices):
                 self.default_voice = self.default_voices[i].id
@@ -352,12 +492,17 @@ class TTS(AudioModule):
         def on_mimic_voice_changed(i):
             self.mimic_voice = mimic_voice_dropdown.itemData(i)
 
+        def on_festival_voice_changed(i):
+            self.festival_voice = festival_voice_dropdown.itemData(i)
+
         default_voice_dropdown.currentIndexChanged.connect(on_default_voice_changed)
         mimic_voice_dropdown.currentIndexChanged.connect(on_mimic_voice_changed)
+        festival_voice_dropdown.currentIndexChanged.connect(on_festival_voice_changed)
 
         voice_col.addWidget(voice_label)
         voice_col.addWidget(default_voice_dropdown)
         voice_col.addWidget(mimic_voice_dropdown)
+        voice_col.addWidget(festival_voice_dropdown)
         engine_voice_row.addLayout(voice_col, stretch=2)
 
         settings_layout.addLayout(engine_voice_row)
@@ -423,12 +568,19 @@ class TTS(AudioModule):
         def on_engine_changed(i):
             engine_code = engine_dropdown.itemData(i)
             self.current_engine = engine_code
+            
             is_mimic = (engine_code == self.ENGINE_MIMIC)
+            is_festival = (engine_code == self.ENGINE_FESTIVAL)
+            is_default = (engine_code == self.ENGINE_DEFAULT)
 
-            default_voice_dropdown.setVisible(not is_mimic)
+            # Toggle voice dropdowns
+            default_voice_dropdown.setVisible(is_default)
             mimic_voice_dropdown.setVisible(is_mimic)
-            rate_label.setVisible(is_mimic)
-            rate_slider.setVisible(is_mimic)
+            festival_voice_dropdown.setVisible(is_festival)
+
+            # Toggle speaking rate controls (Mimic and Festival support rate adjustment)
+            rate_label.setVisible(is_mimic or is_festival)
+            rate_slider.setVisible(is_mimic or is_festival)
 
         engine_dropdown.currentIndexChanged.connect(on_engine_changed)
 
@@ -562,6 +714,7 @@ class TTS(AudioModule):
             "current_engine": self.current_engine,
             "default_voice": self.default_voice,
             "mimic_voice": self.mimic_voice,
+            "festival_voice": self.festival_voice,
             "pitch": self.pitch,
             "speaking_rate": self.speaking_rate,
             "loop": self.loop,
@@ -574,6 +727,7 @@ class TTS(AudioModule):
         self.current_engine = state.get("current_engine", self.ENGINE_DEFAULT)
         self.default_voice = state.get("default_voice", self.default_voice)
         self.mimic_voice = state.get("mimic_voice", "ap")
+        self.festival_voice = state.get("festival_voice", self.festival_voice)
         self.pitch = state.get("pitch", 1.0)
         self.speaking_rate = state.get("speaking_rate", 1.0)
         self.loop = state.get("loop", False)
