@@ -68,7 +68,11 @@ class TTS(AudioModule):
             else:
                 self.default_voices = all_voices
 
-            self.default_voice = self.default_voices[0].id if self.default_voices else None
+            # Find American English male voice as default
+            self.default_voice = self._find_us_male_voice_pyttsx3(self.default_voices)
+            if not self.default_voice and self.default_voices:
+                self.default_voice = self.default_voices[0].id
+                
             engine.stop()
             del engine
             self.default_available = True
@@ -78,16 +82,56 @@ class TTS(AudioModule):
             self.default_voice = None
             self.default_available = False
 
+    def _find_us_male_voice_pyttsx3(self, voices):
+        """Find American English male voice for pyttsx3."""
+        # Priority keywords for US English male voices across platforms
+        # Windows: "David", "Microsoft David"
+        # macOS: "Alex", "Tom", "Fred"
+        # Linux (espeak): "en-us", "english-us", "en_us"
+        
+        us_male_keywords = [
+            # Windows SAPI voices
+            "david", "microsoft david", "james", "microsoft james",
+            # macOS voices
+            "alex", "tom", "fred",
+            # Linux espeak variants
+            "en-us+m", "en_us+m", "english-us+m", "english_us+m",
+            "en-us", "en_us", "english-us", "english_us",
+        ]
+        
+        # First pass: look for explicit US male voice
+        for keyword in us_male_keywords:
+            for v in voices:
+                voice_id_lower = v.id.lower()
+                voice_name_lower = v.name.lower()
+                if keyword in voice_id_lower or keyword in voice_name_lower:
+                    # Check it's not female (for keywords that don't specify gender)
+                    if "female" not in voice_name_lower and "+f" not in voice_id_lower:
+                        return v.id
+        
+        # Second pass: any English male voice
+        for v in voices:
+            voice_name_lower = v.name.lower()
+            voice_id_lower = v.id.lower()
+            is_english = "english" in voice_name_lower or "en_" in voice_id_lower or "en-" in voice_id_lower
+            is_male = "male" in voice_name_lower and "female" not in voice_name_lower
+            is_male = is_male or "+m" in voice_id_lower
+            if is_english and is_male:
+                return v.id
+        
+        return None
+
     def _init_mimic_engine(self):
         """Initialize Mimic voices."""
+        # Order voices with US male first
         self.mimic_voices = {
-            "ap": "Alan Pope (male, British)",
-            "slt": "Scottish female",
-            "rms": "US male",
-            "awb": "Scottish male",
+            "rms": "US male (RMS)",
+            "ap": "British male (Alan Pope)",
+            "awb": "Scottish male (AWB)",
+            "slt": "US female (SLT)",
         }
         self.mimic_voice_codes = list(self.mimic_voices.keys())
-        self.mimic_voice = "ap"
+        self.mimic_voice = "rms"  # US male as default
 
     def _init_festival_engine(self):
         """Initialize Festival voices."""
@@ -123,12 +167,15 @@ class TTS(AudioModule):
                         voice = voice.strip()
                         if voice:
                             # Create friendly names
-                            friendly = voice.replace('_', ' ').title()
+                            friendly = self._get_festival_voice_friendly_name(voice)
                             self.festival_voices[voice] = friendly
                     
                     self.festival_voice_codes = list(self.festival_voices.keys())
                     if self.festival_voice_codes:
-                        self.festival_voice = self.festival_voice_codes[0]
+                        # Find US male voice as default
+                        self.festival_voice = self._find_us_male_voice_festival(self.festival_voice_codes)
+                        if not self.festival_voice:
+                            self.festival_voice = self.festival_voice_codes[0]
                         self.festival_available = True
 
         except FileNotFoundError:
@@ -148,19 +195,77 @@ class TTS(AudioModule):
                     timeout=2
                 )
                 if result.returncode == 0:
-                    # Add common default voices
+                    # Add common default voices - US male first
                     self.festival_voices = {
                         "kal_diphone": "Kal Diphone (US male)",
-                        "ked_diphone": "Ked Diphone (US male)",
-                        "cmu_us_slt_arctic_hts": "CMU SLT (US female, HTS)",
-                        "cmu_us_awb_arctic_hts": "CMU AWB (Scottish male, HTS)",
                         "cmu_us_rms_arctic_hts": "CMU RMS (US male, HTS)",
+                        "ked_diphone": "Ked Diphone (US male)",
+                        "cmu_us_awb_arctic_hts": "CMU AWB (Scottish male, HTS)",
+                        "cmu_us_slt_arctic_hts": "CMU SLT (US female, HTS)",
                     }
                     self.festival_voice_codes = list(self.festival_voices.keys())
-                    self.festival_voice = "kal_diphone"
+                    self.festival_voice = "kal_diphone"  # US male as default
                     self.festival_available = True
             except:
                 pass
+
+    def _get_festival_voice_friendly_name(self, voice_code):
+        """Generate a friendly display name for a Festival voice."""
+        # Known voice mappings
+        known_voices = {
+            "kal_diphone": "Kal Diphone (US male)",
+            "ked_diphone": "Ked Diphone (US male)",
+            "cmu_us_rms_arctic_hts": "CMU RMS (US male, HTS)",
+            "cmu_us_rms_cg": "CMU RMS (US male, CG)",
+            "cmu_us_awb_arctic_hts": "CMU AWB (Scottish male, HTS)",
+            "cmu_us_awb_cg": "CMU AWB (Scottish male, CG)",
+            "cmu_us_slt_arctic_hts": "CMU SLT (US female, HTS)",
+            "cmu_us_slt_cg": "CMU SLT (US female, CG)",
+            "cmu_us_bdl_arctic_hts": "CMU BDL (US male, HTS)",
+            "cmu_us_bdl_cg": "CMU BDL (US male, CG)",
+            "cmu_us_clb_arctic_hts": "CMU CLB (US female, HTS)",
+            "cmu_us_jmk_arctic_hts": "CMU JMK (Canadian male, HTS)",
+            "rab_diphone": "RAB Diphone (British male)",
+            "don_diphone": "Don Diphone (British male)",
+        }
+        
+        if voice_code in known_voices:
+            return known_voices[voice_code]
+        
+        # Fallback: format the voice code nicely
+        return voice_code.replace('_', ' ').title()
+
+    def _find_us_male_voice_festival(self, voice_codes):
+        """Find American English male voice for Festival."""
+        # Priority order for US male voices
+        us_male_priority = [
+            "kal_diphone",           # Classic US male diphone
+            "cmu_us_rms_arctic_hts", # CMU RMS - US male HTS
+            "cmu_us_rms_cg",         # CMU RMS - US male clustergen
+            "cmu_us_bdl_arctic_hts", # CMU BDL - US male HTS
+            "cmu_us_bdl_cg",         # CMU BDL - US male clustergen
+            "ked_diphone",           # Another US male diphone
+        ]
+        
+        # First: check priority list
+        for voice in us_male_priority:
+            if voice in voice_codes:
+                return voice
+        
+        # Second: look for any voice with "us" and "male" indicators (excluding female)
+        for voice in voice_codes:
+            voice_lower = voice.lower()
+            has_us = "_us_" in voice_lower or voice_lower.startswith("us_")
+            has_female_indicator = "slt" in voice_lower or "clb" in voice_lower  # Known female voice codes
+            if has_us and not has_female_indicator:
+                return voice
+        
+        # Third: look for any diphone voice (typically male)
+        for voice in voice_codes:
+            if "diphone" in voice.lower() and "fem" not in voice.lower():
+                return voice
+        
+        return None
 
     # ==========================================================================
     # Preset File Management
@@ -498,6 +603,22 @@ class TTS(AudioModule):
         default_voice_dropdown.currentIndexChanged.connect(on_default_voice_changed)
         mimic_voice_dropdown.currentIndexChanged.connect(on_mimic_voice_changed)
         festival_voice_dropdown.currentIndexChanged.connect(on_festival_voice_changed)
+
+        # Set initial dropdown indices to match the selected default voices
+        # pyttsx3: find index of selected voice
+        if self.default_voice:
+            for i, v in enumerate(self.default_voices):
+                if v.id == self.default_voice:
+                    default_voice_dropdown.setCurrentIndex(i)
+                    break
+
+        # Mimic: find index of selected voice
+        if self.mimic_voice and self.mimic_voice in self.mimic_voice_codes:
+            mimic_voice_dropdown.setCurrentIndex(self.mimic_voice_codes.index(self.mimic_voice))
+
+        # Festival: find index of selected voice
+        if self.festival_voice and self.festival_voice in self.festival_voice_codes:
+            festival_voice_dropdown.setCurrentIndex(self.festival_voice_codes.index(self.festival_voice))
 
         voice_col.addWidget(voice_label)
         voice_col.addWidget(default_voice_dropdown)
