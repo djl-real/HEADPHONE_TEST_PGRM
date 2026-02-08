@@ -779,33 +779,27 @@ class ModuleItem(QGraphicsRectItem):
         my_input = audio_inputs[0]
         my_output = audio_outputs[0]
 
-        backend_input = input_node.node_obj
-        backend_output = output_node.node_obj
-
-        # Frontend: remove old connection
+        # Disconnect the existing connection (both backend and frontend)
         if output_node.connection:
             output_node.connection.disconnect()
 
-        if backend_input and backend_output:
-            try:
-                self.module.insert(backend_output, backend_input)
-            except Exception:
-                print("insert failed")
-                traceback.print_exc()
-
-        # Create new connections visually
+        # Connect upstream output → our input (backend + frontend)
         try:
-            # Connect upstream output to our input
-            new_conn_start = ConnectionPath(output_node, my_input, scene=self.scene())
-            output_node.connection = new_conn_start
-            my_input.connection = new_conn_start
-
-            # Connect our output to downstream input
-            new_conn_end = ConnectionPath(my_output, input_node, scene=self.scene())
-            my_output.connection = new_conn_end
-            input_node.connection = new_conn_end
+            if not output_node.connect(my_input):
+                print("insert failed: could not connect upstream to module input")
+                return
         except Exception:
-            print("ui failed")
+            print("insert failed: upstream connection")
+            traceback.print_exc()
+            return
+
+        # Connect our output → downstream input (backend + frontend)
+        try:
+            if not my_output.connect(input_node):
+                print("insert failed: could not connect module output to downstream")
+                return
+        except Exception:
+            print("insert failed: downstream connection")
             traceback.print_exc()
 
     def mouseReleaseEvent(self, event):
