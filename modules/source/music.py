@@ -448,6 +448,7 @@ class Music(AudioModule):
 
     def get_ui(self) -> QWidget:
         widget = QWidget()
+        widget.setMinimumWidth(340)
         layout = QVBoxLayout(widget)
         layout.setSpacing(4)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -661,33 +662,47 @@ class Music(AudioModule):
         cue_control_row.addWidget(self.cue_spinbox)
         
         # Fine tune buttons (-1s, -0.1s, +0.1s, +1s)
-        def make_cue_btn(text, delta):
-            btn = QPushButton(text)
-            btn.setFixedSize(22, 16)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3a3a3a;
-                    color: #ccc;
-                    font-size: 8px;
-                    border-radius: 2px;
-                    border: 1px solid #555;
-                    padding: 0px;
-                }
-                QPushButton:hover {
-                    background-color: #4a4a4a;
-                    color: white;
-                }
-                QPushButton:pressed {
-                    background-color: #2a2a2a;
-                }
-            """)
-            btn.clicked.connect(lambda: self._adjust_cue(delta))
-            return btn
+        cue_btn_style = """
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ccc;
+                font-size: 8px;
+                border-radius: 2px;
+                border: 1px solid #555;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: white;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+        """
         
-        cue_control_row.addWidget(make_cue_btn("-1", -1.0))
-        cue_control_row.addWidget(make_cue_btn("-.1", -0.1))
-        cue_control_row.addWidget(make_cue_btn("+.1", 0.1))
-        cue_control_row.addWidget(make_cue_btn("+1", 1.0))
+        self.cue_btn_minus_1 = QPushButton("-1")
+        self.cue_btn_minus_1.setFixedSize(22, 16)
+        self.cue_btn_minus_1.setStyleSheet(cue_btn_style)
+        self.cue_btn_minus_1.clicked.connect(lambda checked: self._adjust_cue(-1.0))
+        cue_control_row.addWidget(self.cue_btn_minus_1)
+        
+        self.cue_btn_minus_01 = QPushButton("-.1")
+        self.cue_btn_minus_01.setFixedSize(22, 16)
+        self.cue_btn_minus_01.setStyleSheet(cue_btn_style)
+        self.cue_btn_minus_01.clicked.connect(lambda checked: self._adjust_cue(-0.1))
+        cue_control_row.addWidget(self.cue_btn_minus_01)
+        
+        self.cue_btn_plus_01 = QPushButton("+.1")
+        self.cue_btn_plus_01.setFixedSize(22, 16)
+        self.cue_btn_plus_01.setStyleSheet(cue_btn_style)
+        self.cue_btn_plus_01.clicked.connect(lambda checked: self._adjust_cue(0.1))
+        cue_control_row.addWidget(self.cue_btn_plus_01)
+        
+        self.cue_btn_plus_1 = QPushButton("+1")
+        self.cue_btn_plus_1.setFixedSize(22, 16)
+        self.cue_btn_plus_1.setStyleSheet(cue_btn_style)
+        self.cue_btn_plus_1.clicked.connect(lambda checked: self._adjust_cue(1.0))
+        cue_control_row.addWidget(self.cue_btn_plus_1)
         
         # Spacer
         cue_control_row.addSpacing(4)
@@ -803,55 +818,74 @@ class Music(AudioModule):
         self.pitch_label.setStyleSheet("color: #aaa; font-size: 10px;")
         pitch_header.addWidget(self.pitch_label)
         
-        # Pitch reset button
-        self.pitch_reset_btn = QPushButton("1x")
-        self.pitch_reset_btn.setFixedSize(22, 16)
-        self.pitch_reset_btn.setToolTip("Reset pitch to 1.00x")
-        self.pitch_reset_btn.setStyleSheet("""
+        # Fine tune button style
+        pitch_btn_style = """
             QPushButton {
                 background-color: #3a3a3a;
-                color: #aaa;
-                font-size: 9px;
-                font-weight: bold;
+                color: #ccc;
+                font-size: 8px;
                 border-radius: 2px;
                 border: 1px solid #555;
+                padding: 0px;
             }
             QPushButton:hover {
                 background-color: #4a4a4a;
                 color: white;
-                border-color: #4a90e2;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+        """
+        
+        # -0.1 button
+        self.pitch_btn_minus_1 = QPushButton("-.1")
+        self.pitch_btn_minus_1.setFixedSize(22, 16)
+        self.pitch_btn_minus_1.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_minus_1.clicked.connect(lambda checked: self._adjust_pitch(-0.1))
+        pitch_header.addWidget(self.pitch_btn_minus_1)
+        
+        # -0.01 button
+        self.pitch_btn_minus_01 = QPushButton("-.01")
+        self.pitch_btn_minus_01.setFixedSize(26, 16)
+        self.pitch_btn_minus_01.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_minus_01.clicked.connect(lambda checked: self._adjust_pitch(-0.01))
+        pitch_header.addWidget(self.pitch_btn_minus_01)
+        
+        # Pitch reset button (centered, distinct style)
+        self.pitch_reset_btn = QPushButton("1x")
+        self.pitch_reset_btn.setFixedSize(24, 16)
+        self.pitch_reset_btn.setToolTip("Reset pitch to 1.00x")
+        self.pitch_reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a90e2;
+                color: white;
+                font-size: 9px;
+                font-weight: bold;
+                border-radius: 2px;
+                border: 1px solid #3a80d2;
+            }
+            QPushButton:hover {
+                background-color: #5aa0f2;
+            }
+            QPushButton:pressed {
+                background-color: #3a70c2;
             }
         """)
         pitch_header.addWidget(self.pitch_reset_btn)
         
-        # Fine tune buttons for pitch
-        def make_pitch_btn(text, delta):
-            btn = QPushButton(text)
-            btn.setFixedSize(22, 16)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #3a3a3a;
-                    color: #ccc;
-                    font-size: 8px;
-                    border-radius: 2px;
-                    border: 1px solid #555;
-                    padding: 0px;
-                }
-                QPushButton:hover {
-                    background-color: #4a4a4a;
-                    color: white;
-                }
-                QPushButton:pressed {
-                    background-color: #2a2a2a;
-                }
-            """)
-            btn.clicked.connect(lambda: self._adjust_pitch(delta))
-            return btn
+        # +0.01 button
+        self.pitch_btn_plus_01 = QPushButton("+.01")
+        self.pitch_btn_plus_01.setFixedSize(26, 16)
+        self.pitch_btn_plus_01.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_plus_01.clicked.connect(lambda checked: self._adjust_pitch(0.01))
+        pitch_header.addWidget(self.pitch_btn_plus_01)
         
-        pitch_header.addWidget(make_pitch_btn("-.1", -0.1))
-        pitch_header.addWidget(make_pitch_btn("-.01", -0.01))
-        pitch_header.addWidget(make_pitch_btn("+.01", 0.01))
-        pitch_header.addWidget(make_pitch_btn("+.1", 0.1))
+        # +0.1 button
+        self.pitch_btn_plus_1 = QPushButton("+.1")
+        self.pitch_btn_plus_1.setFixedSize(22, 16)
+        self.pitch_btn_plus_1.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_plus_1.clicked.connect(lambda checked: self._adjust_pitch(0.1))
+        pitch_header.addWidget(self.pitch_btn_plus_1)
         
         pitch_header.addStretch()
         
@@ -995,12 +1029,22 @@ class Music(AudioModule):
         new_pitch = self.pitch + delta
         # Clamp to valid range (0.5 to 2.0)
         new_pitch = max(0.5, min(2.0, new_pitch))
-        # Convert pitch back to slider value: pitch = 0.5 * (4 ** s), so s = log4(pitch / 0.5)
+        # Set pitch directly and update slider to match
+        self.pitch = new_pitch
+        self.pitch_label.setText(f"Pitch: {self.pitch:.2f}x")
+        # Update vinyl spin speed
+        if hasattr(self, 'vinyl_widget'):
+            self.vinyl_widget.set_pitch(self.pitch)
+        # Update cue visualizer with new pitch
+        self.update_cue_visualizer()
+        # Update slider position (without triggering callback)
         import math
         s = math.log(new_pitch / 0.5) / math.log(4)
-        slider_val = int(s * 100)
+        slider_val = int(round(s * 100))
         slider_val = max(0, min(100, slider_val))
+        self.pitch_slider.blockSignals(True)
         self.pitch_slider.setValue(slider_val)
+        self.pitch_slider.blockSignals(False)
     
     def _copy_song_info(self):
         """Copy song title and artist to clipboard."""

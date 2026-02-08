@@ -1,5 +1,8 @@
 Use audacity for effects inspo
 
+mixer scrolling and position
+inserting doesnt connect
+NORMALIZE THE HT
 
 fix endpoint
 check if all saves work (in menu and box select)
