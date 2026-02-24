@@ -3,7 +3,6 @@ import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider
 from PyQt6.QtCore import Qt
 from audio_module import AudioModule
-from nodes import InputNode, OutputNode
 
 class Pan(AudioModule):
     """Simple stereo panning module."""
