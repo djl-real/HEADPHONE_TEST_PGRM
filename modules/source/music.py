@@ -1033,8 +1033,8 @@ class Music(AudioModule):
         self.pitch = new_pitch
         self.pitch_label.setText(f"Pitch: {self.pitch:.2f}x")
         # Update vinyl spin speed
-        if hasattr(self, 'vinyl_widget'):
-            self.vinyl_widget.set_pitch(self.pitch)
+        # if hasattr(self, 'vinyl_widget'):
+        #     self.vinyl_widget.set_pitch(self.pitch)
         # Update cue visualizer with new pitch
         self.update_cue_visualizer()
         # Update slider position (without triggering callback)
