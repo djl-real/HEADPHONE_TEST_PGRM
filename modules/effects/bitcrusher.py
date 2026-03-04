@@ -21,7 +21,10 @@ class Bitcrusher(AudioModule):
             return np.zeros((frames, 2), dtype=np.float32)
 
         x = self.input_node.receive(frames)
-        y = np.zeros_like(x)
+
+        # Skip processing if the input block is empty or silent
+        if x.size == 0 or not np.any(x):
+            return np.zeros((frames, 2), dtype=np.float32)
 
         # --- Bit depth reduction ---
         levels = 2 ** self.bit_depth
@@ -91,7 +94,7 @@ class Bitcrusher(AudioModule):
 
         return widget
 
-        # ---------------- Serialization ----------------
+    # ---------------- Serialization ----------------
     def serialize(self) -> dict:
         """Return a dict representing this module's state."""
         data = super().serialize()

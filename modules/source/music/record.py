@@ -3,6 +3,9 @@ from PyQt6.QtCore import Qt, QTimer, QPointF, QRectF, QPropertyAnimation, QEasin
 from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QPixmap, QFont, QPainterPath, QRadialGradient
 
 
+ANIMATIONS_ENABLED = False
+
+
 class Record(QWidget):
     """Circular vinyl record widget with album art, spinning animation, and drag-drop."""
     
@@ -57,7 +60,7 @@ class Record(QWidget):
     def set_playing(self, playing: bool):
         """Set playing state and control spinning animation."""
         self.is_playing = playing
-        if playing:
+        if playing and ANIMATIONS_ENABLED:
             self.spin_timer.start()
         else:
             self.spin_timer.stop()
@@ -69,6 +72,8 @@ class Record(QWidget):
     
     def _update_rotation(self):
         """Update rotation angle for spinning animation at 33 RPM adjusted by pitch."""
+        if not ANIMATIONS_ENABLED:
+            return
         # 33 RPM = 33 rotations per minute = 0.55 rotations per second
         # At 60 FPS (16ms interval), that's 0.55 * 360 / 60 = 3.3 degrees per frame
         # Base rotation adjusted by pitch
@@ -78,6 +83,10 @@ class Record(QWidget):
     
     def _update_glow(self):
         """Animate the glow effect during drag hover."""
+        if not ANIMATIONS_ENABLED:
+            self._glow_intensity = 0.0
+            self.glow_timer.stop()
+            return
         if self._drag_hover:
             self._glow_intensity = min(1.0, self._glow_intensity + 0.1)
         else:
@@ -88,6 +97,10 @@ class Record(QWidget):
     
     def _update_flash(self):
         """Animate the flash effect after drop."""
+        if not ANIMATIONS_ENABLED:
+            self._drop_flash = 0.0
+            self.flash_timer.stop()
+            return
         self._drop_flash = max(0.0, self._drop_flash - 0.08)
         if self._drop_flash <= 0:
             self.flash_timer.stop()
@@ -95,6 +108,8 @@ class Record(QWidget):
     
     def _trigger_drop_flash(self):
         """Trigger the drop flash animation."""
+        if not ANIMATIONS_ENABLED:
+            return
         self._drop_flash = 1.0
         self.flash_timer.start()
     
@@ -116,8 +131,8 @@ class Record(QWidget):
         center_x = width / 2
         center_y = vinyl_area_height / 2  # Center in vinyl area only
         
-        # Draw glow effect when dragging over
-        if self._glow_intensity > 0:
+        # Draw glow effect when dragging over (only if animations enabled)
+        if ANIMATIONS_ENABLED and self._glow_intensity > 0:
             glow_radius = radius + 20 + (10 * self._glow_intensity)
             glow_gradient = QRadialGradient(center_x, center_y, glow_radius)
             glow_color = QColor(74, 144, 226, int(100 * self._glow_intensity))
@@ -127,8 +142,8 @@ class Record(QWidget):
             painter.setBrush(QBrush(glow_gradient))
             painter.drawEllipse(QPointF(center_x, center_y), glow_radius, glow_radius)
         
-        # Draw drop flash effect
-        if self._drop_flash > 0:
+        # Draw drop flash effect (only if animations enabled)
+        if ANIMATIONS_ENABLED and self._drop_flash > 0:
             flash_radius = radius + 30
             flash_gradient = QRadialGradient(center_x, center_y, flash_radius)
             flash_color = QColor(46, 204, 113, int(150 * self._drop_flash))
@@ -155,8 +170,8 @@ class Record(QWidget):
             path.addEllipse(QPointF(center_x, center_y), radius - 3, radius - 3)
             painter.setClipPath(path)
             
-            # Rotate around center (always rotate when playing, pitch affects speed)
-            if self.is_playing:
+            # Rotate around center (only when playing AND animations enabled)
+            if self.is_playing and ANIMATIONS_ENABLED:
                 painter.translate(center_x, center_y)
                 painter.rotate(self.rotation_angle)
                 painter.translate(-center_x, -center_y)
@@ -292,7 +307,8 @@ class Record(QWidget):
         if mime.hasText() or mime.hasFormat("application/x-song-index"):
             event.acceptProposedAction()
             self._drag_hover = True
-            self.glow_timer.start()
+            if ANIMATIONS_ENABLED:
+                self.glow_timer.start()
     
     def dragMoveEvent(self, event):
         """Continue accepting drag while moving over widget."""
