@@ -1,232 +1,1137 @@
-# modules/soundboard.py
 import os
+import re
 import numpy as np
 import soundfile as sf
+import librosa
+import threading
+import traceback
+import time
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QScrollArea, QPushButton, QLabel,
-    QGridLayout, QStackedWidget, QHBoxLayout, QSizePolicy
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QSlider, QStackedWidget, QDoubleSpinBox, QApplication
 )
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QPixmap, QImage
 from audio_module import AudioModule
+import mutagen
+from mutagen.id3 import ID3, APIC
+from mutagen.mp4 import MP4, MP4Cover
+from mutagen.flac import FLAC, Picture
+
+# Import custom widgets
+from modules.source.music.cue_waveform_visualizer import CueWaveformVisualizer
+from modules.source.music.record import Record
+from modules.source.music.playlist import Playlist
+
+AUDIO_EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg", ".m4a")
+
+def detect_bpm(path):
+    """Fast BPM detector using onset envelope autocorrelation."""
+    try:
+        y, sr = librosa.load(path, mono=True, sr=8000, duration=30)
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        tempo = librosa.beat.tempo(onset_envelope=onset_env, sr=sr, aggregate=None)
+        return int(tempo[0]) if len(tempo) > 0 else None
+    except Exception as e:
+        traceback.print_exc()
+        return None
+
+def extract_album_art(path):
+    """Extract album art from audio file."""
+    try:
+        audio = mutagen.File(path)
+        
+        if isinstance(audio, ID3) or hasattr(audio, 'tags') and isinstance(audio.tags, ID3):
+            # MP3 files
+            for tag in audio.tags.values():
+                if isinstance(tag, APIC):
+                    image_data = tag.data
+                    image = QImage.fromData(image_data)
+                    return QPixmap.fromImage(image)
+        
+        elif isinstance(audio, MP4):
+            # M4A/MP4 files
+            if 'covr' in audio.tags:
+                cover_data = audio.tags['covr'][0]
+                image = QImage.fromData(cover_data)
+                return QPixmap.fromImage(image)
+        
+        elif isinstance(audio, FLAC):
+            # FLAC files
+            if audio.pictures:
+                pic_data = audio.pictures[0].data
+                image = QImage.fromData(pic_data)
+                return QPixmap.fromImage(image)
+        
+    except Exception as e:
+        pass
+    
+    return None
 
 
-class Soundboard(AudioModule):
-    """Soundboard module with category-based browsing and playback."""
+class Music(AudioModule):
+    """VirtualDJ-style music player with vinyl interface and cue system."""
 
-    SUPPORTED_EXTENSIONS = (".wav", ".flac", ".ogg", ".aiff", ".aif", ".mp3")
+    def __init__(self, sample_rate=44100):
+        super().__init__(
+            input_count=1,
+            output_count=2,
+            input_types=["cue"],
+            output_types=["audio", "cue"],
+            input_colors=["#B8860B"],
+            output_colors=[None, "#FFFF00"],
+            input_positions=["left"],
+            output_positions=[None, "right"],
+            input_labels=["Cue In"],
+            output_labels=["Audio", "Cue Out"]
+        )
+        self.sample_rate = sample_rate
 
-    def __init__(self, available_outputs=None):
-        super().__init__(input_count=0, output_count=1)
-        self.fs = 44100
-        self.active_sounds = []
-        self.sounds = {}  # {category: {filename: np.array}}
-        self.available_outputs = available_outputs or []
-        self.categories = []
-        self.load_all_sounds()
+        # Playback state
+        self.playing = False
+        self.current_index = None
+        self.selected_index = None  # Currently selected (not necessarily playing)
+        self.play_buffer = np.zeros((0, 2), dtype=np.float32)
+        self.playhead = 0.0
+        self.pitch = 1.0
+        self.reverse = False
+        self.loop = False
+        self.scrubbing_user = False
+        self.song_bpm = None
 
-    # ---------------------------
-    # SOUND LOADING
-    # ---------------------------
-    def load_all_sounds(self):
-        """Scan /sounds directory and load all supported audio files."""
-        base_dir = os.path.join(os.path.dirname(__file__), "../..", "sounds")
-        base_dir = os.path.abspath(base_dir)
+        # Cue system
+        self.cue_time = -5.0
+        self.cue_sent = False
+        self.current_cue_out = None
+        
+        # Crossfade system
+        self.crossfade_duration = 0.0  # 0 = disabled
+        self.crossfade_active = False
+        self.crossfade_progress = 0.0  # 0.0 to 1.0
+        self.fade_in_mode = False  # True if this module is fading IN (was cued by another)
 
-        if not os.path.isdir(base_dir):
-            print(f"[Soundboard] No sounds directory at {base_dir}")
+        # Tap tempo
+        self.tap_times = []
+        self.tapped_bpm = None
+        self.tap_reset_timer = None
+
+        # Audio cache
+        self.audio_cache = {}
+
+        # Pre-allocated generate() buffers — avoids per-call allocations
+        self._gen_buf_frames = 0
+        self._gen_arange = None
+        self._gen_indices = None
+        self._gen_frac = None
+        self._gen_idx_floor = None
+        self._gen_audio_out = None
+        self._gen_cue_out = None
+        self._gen_envelope = None
+
+        # Playlist widget will be created in get_ui()
+        self.playlist_widget = None
+        self.playlists_base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..", "playlists"))
+
+    def _ensure_gen_buffers(self, frames: int):
+        """Allocate or resize pre-allocated generate() buffers if frame count changed."""
+        if frames == self._gen_buf_frames:
+            return
+        self._gen_buf_frames = frames
+        self._gen_arange = np.arange(frames, dtype=np.float64)
+        self._gen_indices = np.empty(frames, dtype=np.float64)
+        self._gen_frac = np.empty(frames, dtype=np.float64)
+        self._gen_idx_floor = np.empty(frames, dtype=np.int64)
+        self._gen_audio_out = np.zeros((frames, 2), dtype=np.float32)
+        self._gen_cue_out = np.zeros((frames, 1), dtype=np.float32)
+        self._gen_envelope = np.empty(frames, dtype=np.float64)
+
+    def load_playlist(self, folder_name):
+        """Load a playlist folder into the playlist widget."""
+        # This method is no longer needed since Playlist handles its own navigation
+        # Keeping for backward compatibility
+        pass
+
+    def select_song(self, index):
+        """Select a song (without auto-playing). Called when song is dropped onto vinyl."""
+        if not self.playlist_widget:
+            return
+            
+        if index < 0 or index >= len(self.playlist_widget.song_metadata):
             return
 
-        for category in sorted(os.listdir(base_dir)):
-            cat_path = os.path.join(base_dir, category)
-            if not os.path.isdir(cat_path):
-                continue
-
-            cat_sounds = {}
-            for fname in os.listdir(cat_path):
-                if not fname.lower().endswith(self.SUPPORTED_EXTENSIONS):
-                    continue
-
-                path = os.path.join(cat_path, fname)
-                try:
-                    data, fs = sf.read(path, dtype="float32")
-
-                    # Convert to stereo if mono
-                    if data.ndim == 1:
-                        data = np.column_stack((data, data))
-
-                    # Resample to target sample rate
-                    if fs != self.fs:
-                        ratio = self.fs / fs
-                        idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
-                        idx = idx[idx < len(data)]
-                        data = data[idx]
-
-                    cat_sounds[fname] = data
-                except RuntimeError:
-                    # skip unsupported files
-                    continue
-                except Exception as e:
-                    print(f"[Soundboard] Failed to load {fname}: {e}")
-
-            if cat_sounds:
-                self.sounds[category] = cat_sounds
-                self.categories.append(category)
-
-        if not self.categories:
-            print("[Soundboard] No sound categories found.")
-
-    # ---------------------------
-    # AUDIO PROCESSING
-    # ---------------------------
-    def queue_sound(self, category, name):
-        """Queue a sound from the specified category for playback."""
-        if category not in self.sounds or name not in self.sounds[category]:
+        self.selected_index = index
+        metadata = self.playlist_widget.get_song_metadata(index)
+        
+        if not metadata:
             return
-        data = self.sounds[category][name].copy()
-        self.active_sounds.append({"data": data, "pos": 0})
+        
+        # Update vinyl record display
+        if hasattr(self, 'vinyl_widget'):
+            # Load album art
+            album_art = extract_album_art(metadata['path'])
+            if album_art:
+                self.vinyl_widget.set_album_art(album_art)
+            else:
+                self.vinyl_widget.set_album_art(None)
+            
+            # Update text
+            self.vinyl_widget.set_song_info(metadata['title'], metadata['artist'])
+        
+        # Load audio data (lazy loading) - store in cache
+        if index not in self.audio_cache:
+            self.load_audio_file(index)
+        
+        # Update cue slider and spinbox range
+        song_length = metadata['length']
+        if hasattr(self, 'cue_slider'):
+            self.cue_slider.setMinimum(int(-song_length * 100))
+            self.cue_slider.setMaximum(0)
+        if hasattr(self, 'cue_spinbox'):
+            self.cue_spinbox.setRange(-float(song_length), 0.0)
+        
+        # Update visualizer
+        self.update_cue_visualizer()
+        
+        # Update scrub slider range based on loaded audio
+        if index in self.audio_cache:
+            track = self.audio_cache[index]
+            if hasattr(self, 'scrub_slider') and len(track) > 0:
+                self.scrub_slider.setValue(0)
 
-    def apply_effect(self, frames: int):
-        """Mix active sounds into the output buffer."""
-        out = np.zeros((frames, 2), dtype=np.float32)
-        new_active = []
+    def load_audio_file(self, index):
+        """Load audio file into memory."""
+        if index in self.audio_cache:
+            return self.audio_cache[index]
 
-        for sound in self.active_sounds:
-            start = sound["pos"]
-            end = min(start + frames, len(sound["data"]))
-            chunk = sound["data"][start:end]
-            out[:len(chunk)] += chunk
+        path = self.playlist_widget.get_song_path(index)
+        if not path:
+            return None
+        
+        data, fs = sf.read(path, dtype="float32")
 
-            if end < len(sound["data"]):
-                sound["pos"] = end
-                new_active.append(sound)
+        if data.ndim == 1:
+            data = np.column_stack((data, data))
 
-        self.active_sounds = new_active
-        return np.clip(out, -1.0, 1.0)
+        if fs != self.sample_rate:
+            ratio = self.sample_rate / fs
+            idx = np.round(np.arange(0, len(data) * ratio) / ratio).astype(int)
+            idx = idx[idx < len(data)]
+            data = data[idx]
 
-    def generate(self, frames: int):
-        """Return the current mixed output."""
-        return self.apply_effect(frames)
+        self.audio_cache[index] = data
+        self.start_bpm_thread(path)
+        return data
 
-    # ---------------------------
-    # UI
-    # ---------------------------
+    def start_bpm_thread(self, path):
+        """Start background BPM detection."""
+        self.song_bpm = None
+        def worker():
+            try:
+                bpm = detect_bpm(path)
+            except Exception:
+                bpm = 0.0
+            self.song_bpm = bpm
+        threading.Thread(target=worker, daemon=True).start()
+
+    def toggle_play(self):
+        """Toggle playback of selected song."""
+        if self.selected_index is None:
+            return
+
+        if self.current_index == self.selected_index and self.play_buffer is not None and len(self.play_buffer) > 0:
+            # Toggle play/pause on current song
+            self.playing = not self.playing
+        else:
+            # Load and start playing new song
+            self.current_index = self.selected_index
+            self.play_buffer = self.load_audio_file(self.selected_index)
+            if self.play_buffer is None or len(self.play_buffer) == 0:
+                return
+            self.playhead = 0.0 if not self.reverse else len(self.play_buffer) - 1
+            self.playing = True
+            self.cue_sent = False
+
+        # Update vinyl animation
+        if hasattr(self, 'vinyl_widget'):
+            self.vinyl_widget.set_playing(self.playing)
+
+    def generate(self, frames: int) -> np.ndarray:
+        """Generate audio and cue output."""
+        # Ensure pre-allocated buffers are the right size
+        self._ensure_gen_buffers(frames)
+
+        # Zero out reusable buffers instead of allocating new ones
+        audio_out = self._gen_audio_out
+        cue_out = self._gen_cue_out
+        audio_out[:] = 0.0
+        cue_out[:] = 0.0
+        
+        # Check for incoming cue (starts this track, possibly with fade-in)
+        if not self.playing and self.input_nodes and len(self.input_nodes) > 0:
+            try:
+                cue_in = self.input_nodes[0].receive(frames)
+                if isinstance(cue_in, np.ndarray) and cue_in.size > 0:
+                    if np.any(cue_in >= 0.5):
+                        # Check if the sender has crossfade enabled
+                        sender_crossfade = 0.0
+                        if len(self.input_nodes) > 0:
+                            sender = self.input_nodes[0].get_connected()
+                            if sender and hasattr(sender, 'crossfade_duration'):
+                                sender_crossfade = sender.crossfade_duration
+                        
+                        if sender_crossfade > 0:
+                            # Start with fade-in
+                            self.fade_in_mode = True
+                            self.crossfade_active = True
+                            self.crossfade_progress = 0.0
+                            self.crossfade_duration = sender_crossfade  # Match sender's duration
+                        else:
+                            self.fade_in_mode = False
+                            self.crossfade_active = False
+                        
+                        self.toggle_play()
+            except Exception:
+                pass
+        
+        if self.current_index is None or not self.playing:
+            self.current_cue_out = cue_out
+            return audio_out
+
+        track = self.play_buffer
+        if track is None:
+            self.current_cue_out = cue_out
+            return audio_out
+            
+        n_samples = len(track)
+        if n_samples < 2:
+            self.current_cue_out = cue_out
+            return audio_out
+
+        step = self.pitch * (-1 if self.reverse else 1)
+
+        # Build indices in-place using pre-allocated buffers
+        indices = self._gen_indices
+        np.multiply(self._gen_arange, step, out=indices)
+        np.add(indices, self.playhead, out=indices)
+
+        # Valid mask — unavoidable boolean array, but indices/frac reuse memory
+        valid_mask = (indices >= 0) & (indices < n_samples - 1)
+        np.clip(indices, 0, n_samples - 2, out=indices)
+
+        idx_floor = self._gen_idx_floor
+        np.floor(indices, out=self._gen_frac)          # temp: store floor in frac buffer
+        np.copyto(idx_floor, self._gen_frac, casting='unsafe')  # cast float->int
+        frac = self._gen_frac
+        np.subtract(indices, frac, out=frac)            # frac = indices - floor(indices)
+
+        audio_out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
+                                 frac[valid_mask, None] * track[idx_floor[valid_mask] + 1]
+
+        # --- Scalar cue detection (replaces full-array vectorized scan) ---
+        # cue_time is negative (e.g., -5.0 means 5 seconds before end)
+        if not self.cue_sent and self.cue_time <= 0:
+            cue_threshold = -self.cue_time  # positive seconds before end
+            inv_rate_pitch = 1.0 / (self.sample_rate * self.pitch)
+
+            remaining_at_start = (n_samples - self.playhead) * inv_rate_pitch
+            remaining_at_end = (n_samples - (self.playhead + step * frames)) * inv_rate_pitch
+
+            if remaining_at_start > cue_threshold >= remaining_at_end:
+                # Crossing happens in this buffer — interpolate the exact sample
+                span = remaining_at_start - remaining_at_end
+                if span > 0:
+                    frac_pos = (remaining_at_start - cue_threshold) / span
+                    cue_idx = min(int(frac_pos * frames), frames - 1)
+                else:
+                    cue_idx = 0
+                cue_out[cue_idx, 0] = 1.0
+                self.cue_sent = True
+                
+                # Start crossfade (fade-out) if enabled
+                if self.crossfade_duration > 0:
+                    self.crossfade_active = True
+                    self.crossfade_progress = 0.0
+                    self.fade_in_mode = False  # This track is fading OUT
+
+        # Apply crossfade envelope using pre-allocated buffer
+        if self.crossfade_active and self.crossfade_duration > 0:
+            # Calculate progress increment per frame
+            progress_per_frame = 1.0 / (self.crossfade_duration * self.sample_rate)
+            
+            # Build envelope in-place
+            start_progress = self.crossfade_progress
+            end_progress = min(1.0, start_progress + progress_per_frame * frames)
+            
+            envelope = self._gen_envelope
+            np.multiply(self._gen_arange, (end_progress - start_progress) / frames, out=envelope)
+            np.add(envelope, start_progress, out=envelope)
+            
+            if self.fade_in_mode:
+                # Fading IN: gain = envelope (0 -> 1)
+                audio_out[:, 0] *= envelope
+                audio_out[:, 1] *= envelope
+            else:
+                # Fading OUT: gain = 1 - envelope (1 -> 0)
+                np.subtract(1.0, envelope, out=envelope)
+                audio_out[:, 0] *= envelope
+                audio_out[:, 1] *= envelope
+            
+            # Update progress
+            self.crossfade_progress = end_progress
+            
+            # Check if crossfade complete
+            if self.crossfade_progress >= 1.0:
+                self.crossfade_active = False
+                if not self.fade_in_mode:
+                    # Fade-out complete, stop playback
+                    self.playing = False
+                    if hasattr(self, 'vinyl_widget'):
+                        self.vinyl_widget.set_playing(False)
+
+        self.playhead += step * frames
+
+        if self.playhead >= n_samples - 1 or self.playhead <= 0:
+            if not self.loop:
+                self.playing = False
+                self.playhead = max(0, min(self.playhead, n_samples - 1))
+                if hasattr(self, 'vinyl_widget'):
+                    self.vinyl_widget.set_playing(False)
+            else:
+                self.playhead = 0.0
+                self.cue_sent = False
+                self.crossfade_active = False
+
+        self.current_cue_out = cue_out
+        return audio_out
+
+    # Tap tempo
+    def on_tap(self):
+        current_time = time.time()
+        if self.tap_reset_timer is not None:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
+        self.tap_times.append(current_time)
+        self.tap_times = [t for t in self.tap_times if current_time - t < 2.0]
+        if len(self.tap_times) >= 2:
+            intervals = [self.tap_times[i] - self.tap_times[i-1] for i in range(1, len(self.tap_times))]
+            avg_interval = sum(intervals) / len(intervals)
+            self.tapped_bpm = 60.0 / avg_interval
+        self.tap_reset_timer = QTimer()
+        self.tap_reset_timer.setSingleShot(True)
+        self.tap_reset_timer.timeout.connect(self.reset_tap_tempo)
+        self.tap_reset_timer.start(2000)
+    
+    def reset_tap_tempo(self):
+        self.tap_times.clear()
+        self.tapped_bpm = None
+        if self.tap_reset_timer is not None:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
+
+    def make_circle_button(self, icon_char, diameter=48, bg="#444", fg="white", tooltip=""):
+        btn = QPushButton(icon_char)
+        btn.setFixedSize(diameter, diameter)
+        btn.setToolTip(tooltip)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg};
+                color: {fg};
+                font-size: 20px;
+                border-radius: {diameter//2}px;
+                border: 2px solid #222;
+            }}
+            QPushButton:hover {{ background-color: #666; }}
+            QPushButton:pressed {{ background-color: #555; }}
+        """)
+        return btn
+
+    def update_cue_tick_labels(self, song_length):
+        """Update cue slider tick labels dynamically."""
+        if not hasattr(self, 'cue_tick_layout'):
+            return
+        
+        # Clear existing labels
+        while self.cue_tick_layout.count():
+            item = self.cue_tick_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Create new labels
+        num_ticks = 5
+        for i in range(num_ticks):
+            seconds = -song_length * (1 - i / (num_ticks - 1))
+            l = QLabel(f"{seconds:.0f}s")
+            l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            l.setStyleSheet("color: #888; font-size: 10px;")
+            self.cue_tick_layout.addWidget(l)
+
+    def update_cue_visualizer(self):
+        """Update cue waveform visualizer."""
+        if not hasattr(self, 'cue_visualizer') or not self.playlist_widget:
+            return
+        
+        current_track = None
+        if self.selected_index is not None:
+            current_track = self.audio_cache.get(self.selected_index)
+        
+        next_track = None
+        pitch_b = 1.0
+        if len(self.output_nodes) > 1:
+            connected_module = self.output_nodes[1].get_connected()
+            if connected_module and isinstance(connected_module, Music):
+                # Get pitch from connected module
+                pitch_b = connected_module.pitch
+                if connected_module.selected_index is not None:
+                    if not hasattr(connected_module, 'audio_cache'):
+                        connected_module.audio_cache = {}
+                    next_track = connected_module.audio_cache.get(connected_module.selected_index)
+                    if next_track is None:
+                        next_track = connected_module.load_audio_file(connected_module.selected_index)
+        
+        self.cue_visualizer.set_tracks(current_track, next_track, self.cue_time, self.sample_rate, self.pitch, pitch_b)
+
     def get_ui(self) -> QWidget:
-        """Return a UI with category list and category detail views."""
-        main_widget = QWidget()
-        main_layout = QVBoxLayout()
-        main_widget.setLayout(main_layout)
+        widget = QWidget()
+        widget.setMinimumWidth(340)
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(4)
+        layout.setContentsMargins(4, 4, 4, 4)
 
-        self.stack = QStackedWidget()
-        main_layout.addWidget(self.stack)
+        # Vinyl record widget
+        self.vinyl_widget = Record()
+        self.vinyl_widget.on_song_dropped = self.select_song
+        self.vinyl_widget.on_play_clicked = self.toggle_play
+        layout.addWidget(self.vinyl_widget)
 
-        # --- Category List Screen ---
-        cat_screen = QWidget()
-        cat_layout = QVBoxLayout()
-        cat_screen.setLayout(cat_layout)
+        # Scrub/seek slider + remaining time (above playlist)
+        scrub_section = QVBoxLayout()
+        scrub_section.setSpacing(1)
+        
+        # Remaining time + BPM row
+        bpm_layout = QHBoxLayout()
+        bpm_layout.setSpacing(4)
+        self.scrub_label = QLabel("Remaining: 00:00  |  BPM: ---")
+        self.scrub_label.setStyleSheet("color: #888; font-size: 10px;")
+        
+        self.tap_btn = QPushButton("TAP")
+        self.tap_btn.setFixedSize(40, 20)
+        self.tap_btn.setToolTip("Tap to detect BPM manually")
+        self.tap_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a4a4a;
+                color: white;
+                font-weight: bold;
+                font-size: 9px;
+                border-radius: 4px;
+                border: 1px solid #666;
+            }
+            QPushButton:hover { background-color: #5a5a5a; }
+            QPushButton:pressed { background-color: #3a3a3a; }
+        """)
+        self.tap_btn.clicked.connect(self.on_tap)
+        
+        # Copy song info button
+        self.copy_btn = QPushButton("\u2398")  # ⎘ copy symbol
+        self.copy_btn.setFixedSize(20, 20)
+        self.copy_btn.setToolTip("Copy song title and artist to clipboard")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #aaa;
+                font-size: 12px;
+                border-radius: 4px;
+                border: 1px solid #555;
+            }
+            QPushButton:hover { background-color: #4a4a4a; color: white; }
+            QPushButton:pressed { background-color: #2a2a2a; }
+        """)
+        self.copy_btn.clicked.connect(self._copy_song_info)
+        
+        bpm_layout.addWidget(self.scrub_label)
+        bpm_layout.addWidget(self.tap_btn)
+        bpm_layout.addWidget(self.copy_btn)
+        scrub_section.addLayout(bpm_layout)
+        
+        # Scrub slider
+        self.scrub_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scrub_slider.setMinimum(0)
+        self.scrub_slider.setMaximum(1000)
+        self.scrub_slider.setFixedHeight(14)
+        self.scrub_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #333;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #2ecc71;
+                width: 10px;
+                margin: -3px 0;
+                border-radius: 5px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #2ecc71;
+                border-radius: 2px;
+            }
+        """)
+        
+        # Scrub slider seeking functionality
+        self.scrub_slider.sliderPressed.connect(self._on_scrub_pressed)
+        self.scrub_slider.sliderReleased.connect(self._on_scrub_released)
+        self.scrub_slider.sliderMoved.connect(self._on_scrub_moved)
+        
+        scrub_section.addWidget(self.scrub_slider)
+        layout.addLayout(scrub_section)
 
-        title = QLabel("Select a Sound Category:")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 18px; font-weight: bold; margin: 10px;")
-        cat_layout.addWidget(title)
+        # Playlist (handles its own folder/song navigation)
+        self.playlist_widget = Playlist(self.playlists_base_dir)
+        layout.addWidget(self.playlist_widget)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        cat_layout.addWidget(scroll_area)
-
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout()
-        scroll_content.setLayout(scroll_layout)
-        scroll_area.setWidget(scroll_content)
-
-        # Category buttons as vertical list
-        for category in self.categories:
-            btn = QPushButton(category.capitalize())
-            btn.setFixedHeight(50)
-            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #333;
-                    color: white;
-                    font-size: 16px;
-                    border-radius: 8px;
-                    text-align: left;
-                    padding-left: 20px;
-                }
-                QPushButton:hover {
-                    background-color: #555;
-                }
-            """)
-            btn.clicked.connect(lambda _, c=category: self.show_category(c))
-            scroll_layout.addWidget(btn)
-
-        scroll_layout.addStretch()
-        self.stack.addWidget(cat_screen)
-
-        # Store built category screens
-        self.category_views = {}
-
-        # Fixed default size for 4x4 layout
-        main_widget.setMinimumSize(QSize(480, 480))
-
-        return main_widget
-
-    def show_category(self, category):
-        """Display sound buttons for the selected category."""
-        if category in self.category_views:
-            self.stack.setCurrentWidget(self.category_views[category])
-            return
-
-        cat_widget = QWidget()
-        cat_layout = QVBoxLayout()
-        cat_widget.setLayout(cat_layout)
-
-        # Header with back button
-        header = QHBoxLayout()
-        back_btn = QPushButton("← Back")
-        back_btn.setFixedWidth(80)
-        back_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        title = QLabel(f"{category.capitalize()} Sounds")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 18px; font-weight: bold;")
-        header.addWidget(back_btn)
-        header.addWidget(title, 1)
-        cat_layout.addLayout(header)
-
-        # Scrollable 4x4 sound grid
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        cat_layout.addWidget(scroll_area)
-
-        scroll_content = QWidget()
-        grid = QGridLayout()
-        scroll_content.setLayout(grid)
-        scroll_area.setWidget(scroll_content)
-
-        row, col, max_cols = 0, 0, 4
-        for fname in sorted(self.sounds[category].keys()):
-            label = os.path.splitext(fname)[0]
-            btn = QPushButton(label)
-            btn.setFixedSize(100, 100)
-            btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #222;
+        # Control buttons row (reverse + loop)
+        ctrl_layout = QHBoxLayout()
+        ctrl_layout.setSpacing(6)
+        
+        # Better unicode symbols for reverse and loop
+        self.reverse_btn = self.make_circle_button("\u23EA", 28, tooltip="Reverse playback")  # ⏪
+        self.loop_btn = self.make_circle_button("\u21BB", 28, tooltip="Loop track")  # ↻
+        
+        # Toggle styling for buttons
+        def toggle_reverse():
+            self.reverse = not self.reverse
+            self.reverse_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {'#4a90e2' if self.reverse else '#444'};
                     color: white;
                     font-size: 14px;
-                    border-radius: 6px;
-                }
-                QPushButton:hover {
-                    background-color: #444;
-                }
+                    border-radius: 14px;
+                    border: 2px solid #222;
+                }}
+                QPushButton:hover {{ background-color: {'#5aa0f2' if self.reverse else '#666'}; }}
             """)
-            btn.clicked.connect(lambda _, c=category, n=fname: self.queue_sound(c, n))
-            grid.addWidget(btn, row, col)
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
+        
+        def toggle_loop():
+            self.loop = not self.loop
+            self.loop_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: {'#4a90e2' if self.loop else '#444'};
+                    color: white;
+                    font-size: 14px;
+                    border-radius: 14px;
+                    border: 2px solid #222;
+                }}
+                QPushButton:hover {{ background-color: {'#5aa0f2' if self.loop else '#666'}; }}
+            """)
+        
+        self.reverse_btn.clicked.connect(toggle_reverse)
+        self.loop_btn.clicked.connect(toggle_loop)
+        
+        ctrl_layout.addStretch()
+        ctrl_layout.addWidget(self.reverse_btn)
+        ctrl_layout.addWidget(self.loop_btn)
+        ctrl_layout.addStretch()
+        layout.addLayout(ctrl_layout)
 
-        # Ensure it supports more than 16 sounds with scrolling
-        grid.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self.stack.addWidget(cat_widget)
-        self.category_views[category] = cat_widget
-        self.stack.setCurrentWidget(cat_widget)
+        # Cue section container (hidden by default, shown when cue_out connected)
+        self.cue_section_widget = QWidget()
+        cue_section_layout = QVBoxLayout(self.cue_section_widget)
+        cue_section_layout.setContentsMargins(0, 0, 0, 0)
+        cue_section_layout.setSpacing(2)
+        
+        # Cue visualizer (hidden by default)
+        self.cue_visualizer = CueWaveformVisualizer(show_waveform=False)
+        cue_section_layout.addWidget(self.cue_visualizer)
+
+        # Cue control row: label + spinbox + fine tune buttons + crossfade + waveform toggle
+        cue_control_row = QHBoxLayout()
+        cue_control_row.setSpacing(2)
+        cue_control_row.setContentsMargins(0, 0, 0, 0)
+        
+        # Waveform toggle button
+        self.waveform_toggle_btn = QPushButton("\u223F")  # ∿ wave symbol
+        self.waveform_toggle_btn.setFixedSize(18, 16)
+        self.waveform_toggle_btn.setToolTip("Show/hide waveform visualization")
+        self.waveform_toggle_btn.setCheckable(True)
+        self.waveform_toggle_btn.setChecked(False)
+        self.waveform_toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #888;
+                font-size: 10px;
+                border-radius: 2px;
+                border: 1px solid #555;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: #aaa;
+            }
+            QPushButton:checked {
+                background-color: #4a90e2;
+                color: white;
+                border-color: #4a90e2;
+            }
+        """)
+        
+        def toggle_waveform():
+            show = self.waveform_toggle_btn.isChecked()
+            self.cue_visualizer.set_show_waveform(show)
+        
+        self.waveform_toggle_btn.clicked.connect(toggle_waveform)
+        cue_control_row.addWidget(self.waveform_toggle_btn)
+        
+        cue_label = QLabel("Cue:")
+        cue_label.setStyleSheet("color: #FFFF00; font-size: 9px; font-weight: bold;")
+        cue_control_row.addWidget(cue_label)
+        
+        # Spin box for precise cue value (in seconds) - no arrows
+        self.cue_spinbox = QDoubleSpinBox()
+        self.cue_spinbox.setRange(-300.0, 0.0)
+        self.cue_spinbox.setValue(self.cue_time)
+        self.cue_spinbox.setSingleStep(0.1)
+        self.cue_spinbox.setDecimals(2)
+        self.cue_spinbox.setSuffix("s")
+        self.cue_spinbox.setFixedWidth(62)
+        self.cue_spinbox.setFixedHeight(18)
+        self.cue_spinbox.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
+        self.cue_spinbox.setStyleSheet("""
+            QDoubleSpinBox {
+                background-color: #2a2a2a;
+                color: #FFFF00;
+                border: 1px solid #555;
+                border-radius: 2px;
+                padding: 1px 2px;
+                font-size: 10px;
+            }
+        """)
+        cue_control_row.addWidget(self.cue_spinbox)
+        
+        # Fine tune buttons (-1s, -0.1s, +0.1s, +1s)
+        cue_btn_style = """
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ccc;
+                font-size: 8px;
+                border-radius: 2px;
+                border: 1px solid #555;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: white;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+        """
+        
+        self.cue_btn_minus_1 = QPushButton("-1")
+        self.cue_btn_minus_1.setFixedSize(22, 16)
+        self.cue_btn_minus_1.setStyleSheet(cue_btn_style)
+        self.cue_btn_minus_1.clicked.connect(lambda checked: self._adjust_cue(-1.0))
+        cue_control_row.addWidget(self.cue_btn_minus_1)
+        
+        self.cue_btn_minus_01 = QPushButton("-.1")
+        self.cue_btn_minus_01.setFixedSize(22, 16)
+        self.cue_btn_minus_01.setStyleSheet(cue_btn_style)
+        self.cue_btn_minus_01.clicked.connect(lambda checked: self._adjust_cue(-0.1))
+        cue_control_row.addWidget(self.cue_btn_minus_01)
+        
+        self.cue_btn_plus_01 = QPushButton("+.1")
+        self.cue_btn_plus_01.setFixedSize(22, 16)
+        self.cue_btn_plus_01.setStyleSheet(cue_btn_style)
+        self.cue_btn_plus_01.clicked.connect(lambda checked: self._adjust_cue(0.1))
+        cue_control_row.addWidget(self.cue_btn_plus_01)
+        
+        self.cue_btn_plus_1 = QPushButton("+1")
+        self.cue_btn_plus_1.setFixedSize(22, 16)
+        self.cue_btn_plus_1.setStyleSheet(cue_btn_style)
+        self.cue_btn_plus_1.clicked.connect(lambda checked: self._adjust_cue(1.0))
+        cue_control_row.addWidget(self.cue_btn_plus_1)
+        
+        # Spacer
+        cue_control_row.addSpacing(4)
+        
+        # Crossfade control (0 = disabled) - with arrows
+        xfade_label = QLabel("Fade:")
+        xfade_label.setStyleSheet("color: #aaa; font-size: 9px;")
+        cue_control_row.addWidget(xfade_label)
+        
+        self.crossfade_spinbox = QDoubleSpinBox()
+        self.crossfade_spinbox.setRange(0.0, 30.0)
+        self.crossfade_spinbox.setValue(self.crossfade_duration)
+        self.crossfade_spinbox.setSingleStep(0.5)
+        self.crossfade_spinbox.setDecimals(1)
+        self.crossfade_spinbox.setSuffix("s")
+        self.crossfade_spinbox.setFixedWidth(58)
+        self.crossfade_spinbox.setFixedHeight(18)
+        self.crossfade_spinbox.setStyleSheet("""
+            QDoubleSpinBox {
+                background-color: #2a2a2a;
+                color: #aaa;
+                border: 1px solid #555;
+                border-radius: 2px;
+                padding: 1px 2px;
+                font-size: 9px;
+            }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+                background-color: #3a3a3a;
+                border: none;
+                width: 12px;
+            }
+            QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+                background-color: #4a4a4a;
+            }
+        """)
+        self.crossfade_spinbox.setToolTip("Crossfade duration (0 = disabled)")
+        
+        def on_crossfade_change(val):
+            self.crossfade_duration = val
+        
+        self.crossfade_spinbox.valueChanged.connect(on_crossfade_change)
+        cue_control_row.addWidget(self.crossfade_spinbox)
+        
+        cue_control_row.addStretch()
+        cue_section_layout.addLayout(cue_control_row)
+
+        # Cue slider for coarse positioning (full song range)
+        self.cue_slider = QSlider(Qt.Orientation.Horizontal)
+        self.cue_slider.setMinimum(-20000)  # -20 seconds default, updated per song
+        self.cue_slider.setMaximum(0)
+        self.cue_slider.setValue(int(self.cue_time * 100))  # 100 units per second for slider
+        self.cue_slider.setFixedHeight(16)
+        self.cue_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #333;
+                height: 4px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #FFFF00;
+                width: 10px;
+                margin: -3px 0;
+                border-radius: 5px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #666;
+                border-radius: 2px;
+            }
+        """)
+        cue_section_layout.addWidget(self.cue_slider)
+        
+        # Sync between slider and spinbox
+        self._cue_updating = False
+        
+        def on_cue_slider_change(val):
+            if self._cue_updating:
+                return
+            self._cue_updating = True
+            self.cue_time = val / 100.0
+            self.cue_spinbox.setValue(self.cue_time)
+            self.cue_sent = False
+            self.update_cue_visualizer()
+            self._cue_updating = False
+        
+        def on_cue_spinbox_change(val):
+            if self._cue_updating:
+                return
+            self._cue_updating = True
+            self.cue_time = val
+            # Clamp slider to its range
+            slider_val = max(self.cue_slider.minimum(), min(0, int(val * 100)))
+            self.cue_slider.setValue(slider_val)
+            self.cue_sent = False
+            self.update_cue_visualizer()
+            self._cue_updating = False
+        
+        self.cue_slider.valueChanged.connect(on_cue_slider_change)
+        self.cue_spinbox.valueChanged.connect(on_cue_spinbox_change)
+        
+        # Hide cue section by default
+        self.cue_section_widget.hide()
+        layout.addWidget(self.cue_section_widget)
+
+        # Pitch slider section with reset button and fine-tune buttons
+        pitch_section = QVBoxLayout()
+        pitch_section.setSpacing(1)
+        
+        pitch_header = QHBoxLayout()
+        pitch_header.setSpacing(2)
+        pitch_header.setContentsMargins(0, 0, 0, 0)
+        
+        self.pitch_label = QLabel(f"Pitch: {self.pitch:.2f}x")
+        self.pitch_label.setStyleSheet("color: #aaa; font-size: 10px;")
+        pitch_header.addWidget(self.pitch_label)
+        
+        # Fine tune button style
+        pitch_btn_style = """
+            QPushButton {
+                background-color: #3a3a3a;
+                color: #ccc;
+                font-size: 8px;
+                border-radius: 2px;
+                border: 1px solid #555;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #4a4a4a;
+                color: white;
+            }
+            QPushButton:pressed {
+                background-color: #2a2a2a;
+            }
+        """
+        
+        # -0.1 button
+        self.pitch_btn_minus_1 = QPushButton("-.1")
+        self.pitch_btn_minus_1.setFixedSize(22, 16)
+        self.pitch_btn_minus_1.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_minus_1.clicked.connect(lambda checked: self._adjust_pitch(-0.1))
+        pitch_header.addWidget(self.pitch_btn_minus_1)
+        
+        # -0.01 button
+        self.pitch_btn_minus_01 = QPushButton("-.01")
+        self.pitch_btn_minus_01.setFixedSize(26, 16)
+        self.pitch_btn_minus_01.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_minus_01.clicked.connect(lambda checked: self._adjust_pitch(-0.01))
+        pitch_header.addWidget(self.pitch_btn_minus_01)
+        
+        # Pitch reset button (centered, distinct style)
+        self.pitch_reset_btn = QPushButton("1x")
+        self.pitch_reset_btn.setFixedSize(24, 16)
+        self.pitch_reset_btn.setToolTip("Reset pitch to 1.00x")
+        self.pitch_reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a90e2;
+                color: white;
+                font-size: 9px;
+                font-weight: bold;
+                border-radius: 2px;
+                border: 1px solid #3a80d2;
+            }
+            QPushButton:hover {
+                background-color: #5aa0f2;
+            }
+            QPushButton:pressed {
+                background-color: #3a70c2;
+            }
+        """)
+        pitch_header.addWidget(self.pitch_reset_btn)
+        
+        # +0.01 button
+        self.pitch_btn_plus_01 = QPushButton("+.01")
+        self.pitch_btn_plus_01.setFixedSize(26, 16)
+        self.pitch_btn_plus_01.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_plus_01.clicked.connect(lambda checked: self._adjust_pitch(0.01))
+        pitch_header.addWidget(self.pitch_btn_plus_01)
+        
+        # +0.1 button
+        self.pitch_btn_plus_1 = QPushButton("+.1")
+        self.pitch_btn_plus_1.setFixedSize(22, 16)
+        self.pitch_btn_plus_1.setStyleSheet(pitch_btn_style)
+        self.pitch_btn_plus_1.clicked.connect(lambda checked: self._adjust_pitch(0.1))
+        pitch_header.addWidget(self.pitch_btn_plus_1)
+        
+        pitch_header.addStretch()
+        
+        pitch_section.addLayout(pitch_header)
+        
+        self.pitch_slider = QSlider(Qt.Orientation.Horizontal)
+        self.pitch_slider.setMinimum(0)
+        self.pitch_slider.setMaximum(100)
+        self.pitch_slider.setValue(50)
+        self.pitch_slider.setFixedHeight(18)
+        self.pitch_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #333;
+                height: 5px;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #4a90e2;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+        """)
+        pitch_section.addWidget(self.pitch_slider)
+        
+        def on_pitch_change(val):
+            s = val / 100.0
+            self.pitch = 0.5 * (4 ** s)
+            self.pitch_label.setText(f"Pitch: {self.pitch:.2f}x")
+            # Update vinyl spin speed
+            if hasattr(self, 'vinyl_widget'):
+                self.vinyl_widget.set_pitch(self.pitch)
+            # Update cue visualizer with new pitch
+            self.update_cue_visualizer()
+        
+        def reset_pitch():
+            self.pitch_slider.setValue(50)  # 50 corresponds to 1.0x
+        
+        self.pitch_slider.valueChanged.connect(on_pitch_change)
+        self.pitch_reset_btn.clicked.connect(reset_pitch)
+        layout.addLayout(pitch_section)
+
+        # Track connected module's pitch for visualizer updates
+        self._last_connected_pitch = 1.0
+        
+        # Timer for UI updates
+        self.update_timer = QTimer()
+        self.update_timer.setInterval(50)
+        
+        def update_ui():
+            # Safety check - if widget was deleted, stop
+            try:
+                if not self.cue_section_widget or not self.scrub_slider:
+                    return
+            except RuntimeError:
+                # Widget was deleted
+                return
+            
+            # Check cue_out connection status and show/hide cue section
+            cue_connected = False
+            connected_pitch = 1.0
+            if len(self.output_nodes) > 1:
+                connected_module = self.output_nodes[1].get_connected()
+                if connected_module is not None:
+                    cue_connected = True
+                    # Check if connected module has a pitch attribute
+                    if hasattr(connected_module, 'pitch'):
+                        connected_pitch = connected_module.pitch
+            
+            try:
+                if cue_connected and not self.cue_section_widget.isVisible():
+                    self.cue_section_widget.show()
+                    self.update_cue_visualizer()
+                elif not cue_connected and self.cue_section_widget.isVisible():
+                    self.cue_section_widget.hide()
+                
+                # Update visualizer if connected module's pitch changed
+                if cue_connected and connected_pitch != self._last_connected_pitch:
+                    self._last_connected_pitch = connected_pitch
+                    self.update_cue_visualizer()
+                    
+            except RuntimeError:
+                return
+            
+            # Update playback UI
+            if self.playing and self.current_index is not None and not self.scrubbing_user:
+                track = self.play_buffer
+                if track is not None and len(track) > 0:
+                    progress = min(max(self.playhead / len(track), 0.0), 1.0)
+                    try:
+                        self.scrub_slider.blockSignals(True)
+                        self.scrub_slider.setValue(int(progress * 1000))
+                        self.scrub_slider.blockSignals(False)
+
+                        remaining_samples = len(track) - int(self.playhead)
+                        remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
+                        mins, secs = divmod(int(remaining_seconds), 60)
+
+                        auto_bpm = "---" if self.song_bpm is None else f"{self.song_bpm * self.pitch:06.2f}"
+                        bpm_display = f"BPM: {auto_bpm}"
+                        if self.tapped_bpm:
+                            bpm_display = f"Auto: {auto_bpm} | Tap: {self.tapped_bpm:06.2f}"
+
+                        self.scrub_label.setText(f"Remaining: {mins:02d}:{secs:02d}  |  {bpm_display}")
+                    except RuntimeError:
+                        return
+        
+        self.update_timer.timeout.connect(update_ui)
+        self.update_timer.start()
+
+        return widget
+    
+    def _on_scrub_pressed(self):
+        """Called when user starts dragging scrub slider."""
+        self.scrubbing_user = True
+    
+    def _on_scrub_released(self):
+        """Called when user releases scrub slider."""
+        self.scrubbing_user = False
+    
+    def _on_scrub_moved(self, value):
+        """Called when user moves scrub slider - seek to position."""
+        if self.current_index is not None and self.play_buffer is not None:
+            track = self.play_buffer
+            if len(track) > 0:
+                # Convert slider value (0-1000) to playhead position
+                progress = value / 1000.0
+                self.playhead = progress * len(track)
+                self.cue_sent = False  # Reset cue so it can trigger again
+    
+    def _adjust_cue(self, delta):
+        """Adjust cue time by delta seconds."""
+        new_val = self.cue_time + delta
+        # Clamp to valid range (can't be positive, and not beyond song length)
+        min_val = self.cue_spinbox.minimum() if hasattr(self, 'cue_spinbox') else -300.0
+        new_val = max(min_val, min(0.0, new_val))
+        self.cue_spinbox.setValue(new_val)
+    
+    def _adjust_pitch(self, delta):
+        """Adjust pitch by delta amount."""
+        new_pitch = self.pitch + delta
+        # Clamp to valid range (0.5 to 2.0)
+        new_pitch = max(0.5, min(2.0, new_pitch))
+        # Set pitch directly and update slider to match
+        self.pitch = new_pitch
+        self.pitch_label.setText(f"Pitch: {self.pitch:.2f}x")
+        # Update vinyl spin speed
+        # if hasattr(self, 'vinyl_widget'):
+        #     self.vinyl_widget.set_pitch(self.pitch)
+        # Update cue visualizer with new pitch
+        self.update_cue_visualizer()
+        # Update slider position (without triggering callback)
+        import math
+        s = math.log(new_pitch / 0.5) / math.log(4)
+        slider_val = int(round(s * 100))
+        slider_val = max(0, min(100, slider_val))
+        self.pitch_slider.blockSignals(True)
+        self.pitch_slider.setValue(slider_val)
+        self.pitch_slider.blockSignals(False)
+    
+    def _copy_song_info(self):
+        """Copy song title and artist to clipboard."""
+        if self.selected_index is None or not self.playlist_widget:
+            return
+        
+        metadata = self.playlist_widget.get_song_metadata(self.selected_index)
+        if not metadata:
+            return
+        
+        title = metadata.get('title', '')
+        artist = metadata.get('artist', '')
+        filename = metadata.get('filename', '')
+        
+        # Check if we have valid title/artist (not default values)
+        if title and artist and title != 'Unknown' and artist != 'Unknown':
+            text = f"{title} - {artist}"
+        elif title and title != 'Unknown':
+            text = title
+        else:
+            # Fall back to filename, clean it up
+            text = filename
+            # Remove file extension
+            text = os.path.splitext(text)[0]
+            # Remove leading numbers (e.g., "01 - ", "01. ", "1-", "01_")
+            text = re.sub(r'^[\d]+[\s\-_.]*', '', text)
+            # Clean up any remaining leading/trailing whitespace or dashes
+            text = text.strip(' -_.')
+        
+        # Copy to clipboard
+        clipboard = QApplication.clipboard()
+        if clipboard and text:
+            clipboard.setText(text)
+
+    def cleanup(self):
+        # Stop timers first to prevent callbacks after widget deletion
+        if hasattr(self, "update_timer") and self.update_timer:
+            self.update_timer.stop()
+            self.update_timer.deleteLater()
+            self.update_timer = None
+        if hasattr(self, "tap_reset_timer") and self.tap_reset_timer:
+            self.tap_reset_timer.stop()
+            self.tap_reset_timer.deleteLater()
+            self.tap_reset_timer = None
