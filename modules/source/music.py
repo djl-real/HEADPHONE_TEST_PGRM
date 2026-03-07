@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 import mutagen
 from mutagen.id3 import ID3, APIC
 from mutagen.mp4 import MP4, MP4Cover
@@ -118,9 +118,32 @@ class Music(AudioModule):
         # Audio cache
         self.audio_cache = {}
 
+        # Pre-allocated generate() buffers — avoids per-call allocations
+        self._gen_buf_frames = 0
+        self._gen_arange = None
+        self._gen_indices = None
+        self._gen_frac = None
+        self._gen_idx_floor = None
+        self._gen_audio_out = None
+        self._gen_cue_out = None
+        self._gen_envelope = None
+
         # Playlist widget will be created in get_ui()
         self.playlist_widget = None
         self.playlists_base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../..", "playlists"))
+
+    def _ensure_gen_buffers(self, frames: int):
+        """Allocate or resize pre-allocated generate() buffers if frame count changed."""
+        if frames == self._gen_buf_frames:
+            return
+        self._gen_buf_frames = frames
+        self._gen_arange = np.arange(frames, dtype=np.float64)
+        self._gen_indices = np.empty(frames, dtype=np.float64)
+        self._gen_frac = np.empty(frames, dtype=np.float64)
+        self._gen_idx_floor = np.empty(frames, dtype=np.int64)
+        self._gen_audio_out = np.zeros((frames, 2), dtype=np.float32)
+        self._gen_cue_out = np.zeros((frames, 1), dtype=np.float32)
+        self._gen_envelope = np.empty(frames, dtype=np.float64)
 
     def load_playlist(self, folder_name):
         """Load a playlist folder into the playlist widget."""
@@ -234,8 +257,14 @@ class Music(AudioModule):
 
     def generate(self, frames: int) -> np.ndarray:
         """Generate audio and cue output."""
-        cue_out = np.zeros((frames, 1), dtype=np.float32)
-        audio_out = np.zeros((frames, 2), dtype=np.float32)
+        # Ensure pre-allocated buffers are the right size
+        self._ensure_gen_buffers(frames)
+
+        # Zero out reusable buffers instead of allocating new ones
+        audio_out = self._gen_audio_out
+        cue_out = self._gen_cue_out
+        audio_out[:] = 0.0
+        cue_out[:] = 0.0
         
         # Check for incoming cue (starts this track, possibly with fade-in)
         if not self.playing and self.input_nodes and len(self.input_nodes) > 0:
@@ -279,26 +308,42 @@ class Music(AudioModule):
             return audio_out
 
         step = self.pitch * (-1 if self.reverse else 1)
-        indices = self.playhead + step * np.arange(frames)
-        valid_mask = (indices >= 0) & (indices < n_samples - 1)
-        indices_clamped = np.clip(indices, 0, n_samples - 2)
 
-        idx_floor = np.floor(indices_clamped).astype(int)
-        frac = indices_clamped - idx_floor
+        # Build indices in-place using pre-allocated buffers
+        indices = self._gen_indices
+        np.multiply(self._gen_arange, step, out=indices)
+        np.add(indices, self.playhead, out=indices)
+
+        # Valid mask — unavoidable boolean array, but indices/frac reuse memory
+        valid_mask = (indices >= 0) & (indices < n_samples - 1)
+        np.clip(indices, 0, n_samples - 2, out=indices)
+
+        idx_floor = self._gen_idx_floor
+        np.floor(indices, out=self._gen_frac)          # temp: store floor in frac buffer
+        np.copyto(idx_floor, self._gen_frac, casting='unsafe')  # cast float->int
+        frac = self._gen_frac
+        np.subtract(indices, frac, out=frac)            # frac = indices - floor(indices)
+
         audio_out[valid_mask] = (1 - frac[valid_mask, None]) * track[idx_floor[valid_mask]] + \
                                  frac[valid_mask, None] * track[idx_floor[valid_mask] + 1]
 
-        # Cue logic - fires when remaining time crosses the threshold
+        # --- Scalar cue detection (replaces full-array vectorized scan) ---
         # cue_time is negative (e.g., -5.0 means 5 seconds before end)
-        # cue_time = 0 means fire exactly when song ends
-        remaining_samples = n_samples - indices
-        remaining_seconds = (remaining_samples / self.sample_rate) / self.pitch
-        
         if not self.cue_sent and self.cue_time <= 0:
-            cue_threshold = -self.cue_time  # Convert to positive threshold
-            crossed = (remaining_seconds[:-1] > cue_threshold) & (remaining_seconds[1:] <= cue_threshold)
-            if np.any(crossed):
-                cue_idx = np.where(crossed)[0][0] + 1
+            cue_threshold = -self.cue_time  # positive seconds before end
+            inv_rate_pitch = 1.0 / (self.sample_rate * self.pitch)
+
+            remaining_at_start = (n_samples - self.playhead) * inv_rate_pitch
+            remaining_at_end = (n_samples - (self.playhead + step * frames)) * inv_rate_pitch
+
+            if remaining_at_start > cue_threshold >= remaining_at_end:
+                # Crossing happens in this buffer — interpolate the exact sample
+                span = remaining_at_start - remaining_at_end
+                if span > 0:
+                    frac_pos = (remaining_at_start - cue_threshold) / span
+                    cue_idx = min(int(frac_pos * frames), frames - 1)
+                else:
+                    cue_idx = 0
                 cue_out[cue_idx, 0] = 1.0
                 self.cue_sent = True
                 
@@ -308,27 +353,28 @@ class Music(AudioModule):
                     self.crossfade_progress = 0.0
                     self.fade_in_mode = False  # This track is fading OUT
 
-        # Apply crossfade envelope
+        # Apply crossfade envelope using pre-allocated buffer
         if self.crossfade_active and self.crossfade_duration > 0:
             # Calculate progress increment per frame
             progress_per_frame = 1.0 / (self.crossfade_duration * self.sample_rate)
             
-            # Create envelope for this buffer
+            # Build envelope in-place
             start_progress = self.crossfade_progress
             end_progress = min(1.0, start_progress + progress_per_frame * frames)
             
-            # Linear ramp from start to end progress
-            envelope = np.linspace(start_progress, end_progress, frames)
+            envelope = self._gen_envelope
+            np.multiply(self._gen_arange, (end_progress - start_progress) / frames, out=envelope)
+            np.add(envelope, start_progress, out=envelope)
             
             if self.fade_in_mode:
-                # Fading IN: envelope goes 0 -> 1
-                gain = envelope
+                # Fading IN: gain = envelope (0 -> 1)
+                audio_out[:, 0] *= envelope
+                audio_out[:, 1] *= envelope
             else:
-                # Fading OUT: envelope goes 1 -> 0
-                gain = 1.0 - envelope
-            
-            # Apply gain to audio
-            audio_out *= gain[:, np.newaxis]
+                # Fading OUT: gain = 1 - envelope (1 -> 0)
+                np.subtract(1.0, envelope, out=envelope)
+                audio_out[:, 0] *= envelope
+                audio_out[:, 1] *= envelope
             
             # Update progress
             self.crossfade_progress = end_progress

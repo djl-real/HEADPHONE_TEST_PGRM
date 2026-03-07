@@ -2,7 +2,7 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QLineEdit, QDoubleSpinBox
 from PyQt6.QtCore import Qt
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 
 class Const(AudioModule):

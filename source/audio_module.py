@@ -1,6 +1,6 @@
 # audio_module.py
 import numpy as np
-from nodes import Node, InputNode, OutputNode
+from source.nodes import Node
 from PyQt6.QtWidgets import QWidget
 
 class AudioModule:

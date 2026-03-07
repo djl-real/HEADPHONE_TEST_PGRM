@@ -54,7 +54,7 @@ class ModuleScanner:
     """
     
     def __init__(self, modules_dir: str = "modules"):
-        self.modules_dir = Path(modules_dir)
+        self.modules_dir = Path(__file__).parent.parent / "modules"
         self.modules: Dict[str, ModuleInfo] = {}  # name -> ModuleInfo
         self.category_tree = CategoryNode("Root")
         self._scanned = False

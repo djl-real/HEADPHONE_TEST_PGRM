@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout, QPushButton, QLineEdit
 )
 
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 DB_MIN = -80.0
 DB_MAX = 10.0

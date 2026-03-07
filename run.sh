@@ -10,4 +10,4 @@ export PATH="/home/dj/Dev/mimic1:$PATH"
 source "$DIR/.venv/bin/activate"
 
 # Run your program
-python3 "$DIR/main_window.py"
+python3 "$DIR/run_HTP.py"

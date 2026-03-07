@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider, QPushButton, QCheckBox
 )
 from PyQt6.QtCore import Qt
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 MAX_BLOCK_HOLD = 25  # maximum history depth
 

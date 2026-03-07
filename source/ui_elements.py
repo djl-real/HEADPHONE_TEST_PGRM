@@ -8,7 +8,7 @@ from PyQt6.QtGui import QBrush, QPen, QColor, QPainterPath, QFont
 from PyQt6.QtCore import QPointF, Qt, QRectF, QTimer
 
 # from main_window import MainWindow
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 
 class ConnectionPath(QGraphicsPathItem):

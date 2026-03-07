@@ -2,7 +2,7 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt6.QtCore import pyqtSignal
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 from scipy.signal import butter, lfilter_zi, lfilter
 
 

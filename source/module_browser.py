@@ -22,7 +22,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import QFont, QColor, QIcon, QPalette, QCursor
 
 from typing import Dict, List, Callable, Optional
-from module_scanner import ModuleInfo, ManualModuleRegistry
+from source.module_scanner import ModuleInfo, ManualModuleRegistry
 
 
 class ModuleButton(QPushButton):

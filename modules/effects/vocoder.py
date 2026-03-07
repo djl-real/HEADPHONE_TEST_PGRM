@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 
 def butter_bandpass(low, high, fs, order=4):

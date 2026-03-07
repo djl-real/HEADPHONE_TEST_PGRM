@@ -1,8 +1,8 @@
 import numpy as np
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QSlider, QHBoxLayout, QButtonGroup, QRadioButton
 from PyQt6.QtCore import Qt
-from audio_module import AudioModule
-from nodes import OutputNode
+from source.audio_module import AudioModule
+from source.nodes import OutputNode
 
 class Wave(AudioModule):
     """Voltage Controlled Oscillator with selectable waveform and smooth pitch control."""

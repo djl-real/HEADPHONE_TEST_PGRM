@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QHBoxLayout, QSlider, QPushButton, QSpacerItem, QSizePolicy
 )
 from PyQt6.QtCore import Qt
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 DB_MIN = -80.0
 DB_MAX = 10.0

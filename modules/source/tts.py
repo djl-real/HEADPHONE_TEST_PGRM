@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from audio_module import AudioModule
+from source.audio_module import AudioModule
 
 
 class TTS(AudioModule):

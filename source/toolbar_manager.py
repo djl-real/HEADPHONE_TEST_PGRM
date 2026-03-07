@@ -5,10 +5,10 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QSize
 
-from module_scanner import ModuleScanner, ManualModuleRegistry
-from module_browser import ModuleBrowser
-from layout_browser import LayoutBrowser
-from usage_tracker import UsageTracker
+from source.module_scanner import ModuleScanner, ManualModuleRegistry
+from source.module_browser import ModuleBrowser
+from source.layout_browser import LayoutBrowser
+from source.usage_tracker import UsageTracker
 
 
 class ToolbarManager:
