@@ -1,3 +1,4 @@
+# workspace_view.py
 import time
 
 from PyQt6.QtWidgets import (

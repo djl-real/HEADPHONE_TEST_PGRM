@@ -86,6 +86,7 @@ class MainWindow(QMainWindow):
         self.read_index = 0   # Callback reads here
         self.available_blocks = 0
         self._buffer_lock = threading.Lock()
+        self._buffer_cond = threading.Condition(self._buffer_lock)
 
         # Stop signal for worker
         self._stop_event = threading.Event()
@@ -123,14 +124,21 @@ class MainWindow(QMainWindow):
     def _audio_worker_loop(self):
         """Continuously fill the ring buffer with precomputed audio blocks."""
         while not self._stop_event.is_set():
-            if self.available_blocks < self.ring_size:
-                block = self._generate_mix_block(self.block_size)
-                with self._buffer_lock:
-                    np.copyto(self.ring_buffer[self.write_index], block)
-                    self.write_index = (self.write_index + 1) % self.ring_size
-                    self.available_blocks = min(self.available_blocks + 1, self.ring_size)
-            else:
-                threading.Event().wait(0.0005)
+            with self._buffer_cond:
+                # Wait until there is room in the ring buffer
+                while self.available_blocks >= self.ring_size and not self._stop_event.is_set():
+                    self._buffer_cond.wait(timeout=0.01)
+
+                if self._stop_event.is_set():
+                    break
+
+            # Generate outside the lock so the callback isn't blocked
+            block = self._generate_mix_block(self.block_size)
+
+            with self._buffer_cond:
+                np.copyto(self.ring_buffer[self.write_index], block)
+                self.write_index = (self.write_index + 1) % self.ring_size
+                self.available_blocks = min(self.available_blocks + 1, self.ring_size)
 
     # ---------- Mixing ----------
     def _generate_mix_block(self, frames: int) -> np.ndarray:
@@ -156,11 +164,13 @@ class MainWindow(QMainWindow):
     def audio_callback(self, outdata, frames, time, status):
         """Real-time audio callback reads the next available block from the ring buffer."""
         try:
-            with self._buffer_lock:
+            with self._buffer_cond:
                 if self.available_blocks > 0:
                     np.copyto(outdata, self.ring_buffer[self.read_index])
                     self.read_index = (self.read_index + 1) % self.ring_size
                     self.available_blocks -= 1
+                    # Notify the worker that a slot is now free
+                    self._buffer_cond.notify()
                 else:
                     outdata.fill(0)
         except Exception:
@@ -170,6 +180,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Stop worker and audio stream."""
         self._stop_event.set()
+        # Wake the worker so it sees the stop event
+        with self._buffer_cond:
+            self._buffer_cond.notify()
+        self._worker_thread.join(timeout=1.0)
         if hasattr(self, "stream") and self.stream:
             self.stream.stop()
             self.stream.close()

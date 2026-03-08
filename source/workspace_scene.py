@@ -1,45 +1,62 @@
 from PyQt6.QtWidgets import QGraphicsScene
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen
-from PyQt6.QtCore import QPointF
+from PyQt6.QtCore import QPointF, QLineF
 
 
 class WorkspaceScene(QGraphicsScene):
-    """Custom scene with background grid only."""
     def __init__(self):
         super().__init__()
-        # fallback background (drawBackground will paint over)
         self.setBackgroundBrush(QBrush(QColor(25, 25, 25)))
-
-        # Grid settings (smaller spacing for more useful grid)
         self.grid_size = 25
         self.grid_color = QColor(50, 50, 50)
-        self.grid_line_width = 1
-        
-        # Set an initial "infinite-ish" scene rect so scrolling works from the start
         self.setSceneRect(-100000, -100000, 200000, 200000)
 
     def drawBackground(self, painter, rect):
-        # Reduce painting overhead: disable antialiasing, draw only visible lines.
         painter.save()
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.fillRect(rect, QColor(25, 25, 25))
 
-        left = int(rect.left()) - (int(rect.left()) % self.grid_size)
-        top = int(rect.top()) - (int(rect.top()) % self.grid_size)
+        # Determine screen-space pixel size of one scene unit.
+        # If no view exists, assume 1:1.
+        views = self.views()
+        if views:
+            tx = views[0].transform()
+            scale = tx.m11()  # horizontal scale factor
+        else:
+            scale = 1.0
+
+        # Step up through grid multiples until lines are >= 4px apart on screen.
+        effective_grid = self.grid_size
+        while effective_grid * scale < 4.0:
+            effective_grid *= 5  # 25 -> 125 -> 625 ...
+
+        # If even the coarsest level is still too dense, skip the grid entirely.
+        if effective_grid * scale < 2.0:
+            painter.restore()
+            return
+
+        # Snap to grid boundaries
+        left = int(rect.left()) - (int(rect.left()) % effective_grid)
+        top = int(rect.top()) - (int(rect.top()) % effective_grid)
 
         pen = QPen(self.grid_color)
-        pen.setWidth(self.grid_line_width)
+        pen.setWidthF(1.0)
+        pen.setCosmetic(True)  # width stays 1px regardless of zoom
         painter.setPen(pen)
 
-        # Vertical lines (draw only across rect)
+        # Collect all lines into a list, then draw in one batch
+        lines = []
         x = left
-        while x < rect.right():
-            painter.drawLine(QPointF(x, rect.top()), QPointF(x, rect.bottom()))
-            x += self.grid_size
+        while x <= rect.right():
+            lines.append(QLineF(x, rect.top(), x, rect.bottom()))
+            x += effective_grid
 
-        # Horizontal lines
         y = top
-        while y < rect.bottom():
-            painter.drawLine(QPointF(rect.left(), y), QPointF(rect.right(), y))
-            y += self.grid_size
+        while y <= rect.bottom():
+            lines.append(QLineF(rect.left(), y, rect.right(), y))
+            y += effective_grid
+
+        if lines:
+            painter.drawLines(lines)
+
         painter.restore()
