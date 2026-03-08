@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
 
         # Audio backend
         self.sample_rate = 44100
-        self.block_size = 2048
+        self.block_size = 4096
         self.modules: list[AudioModule] = []
         self.endpoints: list[AudioModule] = []
 
