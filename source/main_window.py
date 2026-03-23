@@ -63,7 +63,7 @@ class MainWindow(QMainWindow):
 
         # Audio backend
         self.sample_rate = 44100
-        self.block_size = 4096
+        self.block_size = 8192
         self.modules: list[AudioModule] = []
         self.endpoints: list[AudioModule] = []
 
@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
             self.mixer.toggled.connect(self._reposition_mixer)
 
         # --- Ring buffer configuration ---
-        self.ring_size = 4  # Number of blocks ahead to prefill
+        self.ring_size = 2  # Number of blocks ahead to prefill
         self.ring_buffer = np.zeros((self.ring_size, self.block_size, 2), dtype=np.float32)
         self.write_index = 0  # Worker writes here
         self.read_index = 0   # Callback reads here
