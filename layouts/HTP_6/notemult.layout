@@ -1,0 +1,186 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "1677599912496",
+            "type": "NoteWave",
+            "pos": [
+                39.0,
+                252.0
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "input_types": [],
+                "output_types": [
+                    "audio"
+                ],
+                "input_colors": [],
+                "output_colors": [
+                    null
+                ],
+                "input_positions": [],
+                "output_positions": [
+                    null
+                ],
+                "input_labels": [],
+                "output_labels": [
+                    "Audio"
+                ],
+                "midi_note": 48,
+                "frequency": 136.5181932296276,
+                "target_frequency": 130.8127826502993,
+                "amplitude": 0.5,
+                "wave_type": "Sine",
+                "freq_smooth_factor": 0.0,
+                "phase": 0.25093235651856816
+            }
+        },
+        {
+            "id": "1677599914512",
+            "type": "Endpoint",
+            "pos": [
+                747.0245746691876,
+                314.85444234404525
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [],
+                "volume_db": -10.700000000000003,
+                "muted": true,
+                "nickname": ""
+            }
+        },
+        {
+            "id": "1677600526800",
+            "type": "NoteWave",
+            "pos": [
+                39.60869565217391,
+                508.47826086956536
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "input_types": [],
+                "output_types": [
+                    "audio"
+                ],
+                "input_colors": [],
+                "output_colors": [
+                    null
+                ],
+                "input_positions": [],
+                "output_positions": [
+                    null
+                ],
+                "input_labels": [],
+                "output_labels": [
+                    "Audio"
+                ],
+                "midi_note": 48,
+                "frequency": 130.81278265029925,
+                "target_frequency": 130.8127826502993,
+                "amplitude": 0.5,
+                "wave_type": "Sine",
+                "freq_smooth_factor": 0.2,
+                "phase": 0.393795814478473
+            }
+        },
+        {
+            "id": "1677599915184",
+            "type": "Multiply",
+            "pos": [
+                450.33081285444234,
+                443.10207939508507
+            ],
+            "state": {
+                "input_count": 2,
+                "output_count": 1,
+                "input_types": [
+                    "audio",
+                    "audio"
+                ],
+                "output_types": [
+                    "audio"
+                ],
+                "input_colors": [
+                    null,
+                    null
+                ],
+                "output_colors": [
+                    null
+                ],
+                "input_positions": [
+                    null,
+                    null
+                ],
+                "output_positions": [
+                    null
+                ],
+                "input_labels": [
+                    "Audio",
+                    "Audio"
+                ],
+                "output_labels": [
+                    "Audio"
+                ],
+                "sample_rate": 44100,
+                "crossfade": 1.0
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "1677599915184",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1677599914512",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1677600526800",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1677599915184",
+                "node_index": 1,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "1677599912496",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "1677599915184",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}
