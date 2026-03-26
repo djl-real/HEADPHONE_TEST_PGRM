@@ -1,0 +1,216 @@
+{
+    "version": 2,
+    "modules": [
+        {
+            "id": "139717555206608",
+            "type": "Endpoint",
+            "pos": [
+                889.5500000000001,
+                257.9
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [],
+                "volume_db": -16.1,
+                "muted": false,
+                "nickname": ""
+            }
+        },
+        {
+            "id": "139717204355328",
+            "type": "Static",
+            "pos": [
+                556.05,
+                359.09999999999997
+            ],
+            "state": {
+                "input_count": 0,
+                "output_count": 1,
+                "input_types": [],
+                "output_types": [
+                    "audio"
+                ],
+                "input_colors": [],
+                "output_colors": [
+                    null
+                ],
+                "input_positions": [],
+                "output_positions": [
+                    null
+                ],
+                "input_labels": [],
+                "output_labels": [
+                    "Audio"
+                ]
+            }
+        },
+        {
+            "id": "139717554939152",
+            "type": "SpeedWarble",
+            "pos": [
+                3.0,
+                17.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 1,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [
+                    "audio"
+                ],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [
+                    null
+                ],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [
+                    null
+                ],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [
+                    "Audio"
+                ],
+                "wow_depth": 0.0,
+                "wow_rate": 1.2,
+                "flutter_depth": 1.0,
+                "flutter_rate": 5.6,
+                "random_depth": 0.0,
+                "random_rate": 0.85,
+                "smoothing": 1.0
+            }
+        },
+        {
+            "id": "139717554938816",
+            "type": "Music",
+            "pos": [
+                -435.0,
+                -178.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 2,
+                "input_types": [
+                    "cue"
+                ],
+                "output_types": [
+                    "audio",
+                    "cue"
+                ],
+                "input_colors": [
+                    "#B8860B"
+                ],
+                "output_colors": [
+                    null,
+                    "#FFFF00"
+                ],
+                "input_positions": [
+                    "left"
+                ],
+                "output_positions": [
+                    null,
+                    "right"
+                ],
+                "input_labels": [
+                    "Cue In"
+                ],
+                "output_labels": [
+                    "Audio",
+                    "Cue Out"
+                ]
+            }
+        },
+        {
+            "id": "139717554936800",
+            "type": "Endpoint",
+            "pos": [
+                274.0,
+                0.0
+            ],
+            "state": {
+                "input_count": 1,
+                "output_count": 0,
+                "input_types": [
+                    "audio"
+                ],
+                "output_types": [],
+                "input_colors": [
+                    null
+                ],
+                "output_colors": [],
+                "input_positions": [
+                    null
+                ],
+                "output_positions": [],
+                "input_labels": [
+                    "Audio"
+                ],
+                "output_labels": [],
+                "volume_db": 1.9000000000000057,
+                "muted": false,
+                "nickname": ""
+            }
+        }
+    ],
+    "connections": [
+        {
+            "from": {
+                "module_id": "139717204355328",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "139717555206608",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "139717554939152",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "139717554936800",
+                "node_index": 0,
+                "type": "input"
+            }
+        },
+        {
+            "from": {
+                "module_id": "139717554938816",
+                "node_index": 0,
+                "type": "output"
+            },
+            "to": {
+                "module_id": "139717554939152",
+                "node_index": 0,
+                "type": "input"
+            }
+        }
+    ]
+}

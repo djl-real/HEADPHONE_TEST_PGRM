@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt
 from source.audio_module import AudioModule
 
 
-class SpeedWarble(AudioModule):
+class Warble(AudioModule):
     """Smoothly and randomly varies playback speed, creating tape-warble or
     time-stretch effects.  Uses linear interpolation for resampling — no FFTs.
 
@@ -132,7 +132,7 @@ class SpeedWarble(AudioModule):
         layout = QVBoxLayout()
         widget.setLayout(layout)
 
-        title = QLabel("Speed Warble")
+        title = QLabel("Warble")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 

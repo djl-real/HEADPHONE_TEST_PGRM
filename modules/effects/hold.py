@@ -167,6 +167,13 @@ class Hold(AudioModule):
         self.play_pos = state.get("play_pos", 0)
         buffer_data = state.get("buffer", None)
         if buffer_data is not None:
-            self.buffer = np.array(buffer_data, dtype=np.float32)
+            buf = np.array(buffer_data, dtype=np.float32)
+            if buf.shape == (MAX_HOLD_SAMPLES, 2):
+                self.buffer = buf
+            else:
+                # Incompatible format (e.g. old block-based save) — discard
+                self.buffer = np.zeros((MAX_HOLD_SAMPLES, 2), dtype=np.float32)
+                self.write_pos = 0
+                self.play_pos = 0
         else:
             self.buffer = np.zeros((MAX_HOLD_SAMPLES, 2), dtype=np.float32)
