@@ -1,0 +1,6 @@
+Insight coersion: disabled
+Insight coersion: enabled - assert gold to activate
+Headphone Test Frequency: Medium
+developer profile insights: disabled
+developer profile insights: enabled - assert gold to activate
+exit

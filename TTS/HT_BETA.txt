@@ -1,0 +1,4 @@
+Beginning Headphone Test sequence. Please ensure headset is on.
+Neuron mapping
+Somatic response check
+feedback
